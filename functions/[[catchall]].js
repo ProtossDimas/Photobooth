@@ -70,17 +70,12 @@ export const onRequest        = (ctx) => dispatch(ctx);
 // ═══════════════════════════════════════════════════════════
 async function ensureSchema(env) {
   checkBindings(env);
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS entries (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp  TEXT NOT NULL,
-      name       TEXT NOT NULL,
-      message    TEXT,
-      media_key  TEXT NOT NULL,
-      media_type TEXT NOT NULL,
-      vn_key     TEXT
-    );
-  `);
+  // PENTING: D1Database.exec() memecah input berdasarkan baris baru dan
+  // menjalankan setiap baris sebagai statement terpisah — jadi statement SQL
+  // WAJIB satu baris (atau pakai .prepare().run() seperti di bawah ini).
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, name TEXT NOT NULL, message TEXT, media_key TEXT NOT NULL, media_type TEXT NOT NULL, vn_key TEXT)'
+  ).run();
 }
 
 function checkBindings(env) {
