@@ -318,7 +318,7 @@ rgba(0,0,0,0.2); }
 #video-live {
  width: 100%;
  height: 100%;
- object-fit: contain; /* contain = tidak crop, zoom normal seperti kamera biasa */
+ object-fit: cover; /* cover = selalu mengisi frame portrait, konsisten dgn hasil foto */
  display: block;
  transform: scaleX(-1);
 }
@@ -3613,20 +3613,21 @@ async function startCamera() {
  const constraints = {
  video: {
  facingMode,
- // Gunakan resolusi native kamera tanpa memaksa aspect ratio
- // agar tidak terjadi zoom-in (mirip kamera bawaan HP)
- width: { ideal: 1280 },
- height: { ideal: 720 },
+ // Paksa orientasi PORTRAIT (9:16) secara konsisten setiap kali kamera
+ // di-start ulang (retake / flip), agar tidak berubah jadi gepeng/landscape.
+ width: { ideal: 1080 },
+ height: { ideal: 1920 },
+ aspectRatio: { ideal: 9 / 16 },
  },
  audio: true,
  };
  stream = await navigator.mediaDevices.getUserMedia(constraints);
  document.getElementById('video-live').srcObject = stream;
  } catch (err) {
- // Fallback 1: resolusi lebih rendah
+ // Fallback 1: resolusi lebih rendah, tetap portrait
  try {
  stream = await navigator.mediaDevices.getUserMedia({
- video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+ video: { facingMode, width: { ideal: 480 }, height: { ideal: 854 }, aspectRatio: { ideal: 9 / 16 } },
  audio: true
  });
  document.getElementById('video-live').srcObject = stream;
@@ -4061,38 +4062,48 @@ async function shareMedia() {
  const e = currentEntry;
  if (!e) return;
  const src = e.serverUrl || e.localUrl;
+ if (!src) return showToast('URL tidak tersedia', true);
  const shareData = {
  title: 'The Wedding of Dimas & Nia',
  text: `Momen dari ${e.name} di pernikahan Dimas & Nia 💕${e.msg ? '\n"' + e.msg + '"' :
 ''}`,
- url: src && !src.startsWith('blob:') ? src : window.location.href,
  };
- // If we have a local blob, try to share the file directly
- if (src && src.startsWith('blob:') && navigator.canShare) {
+ // Selalu coba ambil file aslinya dulu (baik dari blob: lokal MAUPUN dari URL server/R2)
+ // supaya yang di-share adalah FOTO/VIDEO-nya langsung, bukan link database.
+ if (navigator.canShare) {
  try {
  const resp = await fetch(src);
+ if (!resp.ok) throw new Error('fetch media gagal: ' + resp.status);
  const blob = await resp.blob();
- const ext = e.type === 'photo' ? 'jpg' : 'webm';
- const file = new File([blob], `momen_${e.name}.${ext}`, { type: blob.type });
+ const ext = e.type === 'photo'
+ ? (blob.type.includes('png') ? 'png' : 'jpg')
+ : (blob.type.includes('mp4') ? 'mp4' : 'webm');
+ const fileType = blob.type || (e.type === 'photo' ? 'image/jpeg' : 'video/webm');
+ const file = new File([blob], `momen_${(e.name || 'tamu').replace(/[^\w\- ]/g, '_')}.${ext}`, { type: fileType });
  if (navigator.canShare({ files: [file] })) {
  await navigator.share({ ...shareData, files: [file] });
  return;
  }
- } catch (_) {}
+ } catch (err) {
+ console.warn('[Share] Gagal share sebagai file, fallback ke link:', err);
  }
+ }
+ // Fallback (browser/OS tidak mendukung Web Share API dengan file, misal desktop):
+ // bagikan link sebagai teks biasa, atau salin ke clipboard.
+ const fallbackUrl = src && !src.startsWith('blob:') ? src : window.location.href;
  if (navigator.share) {
  try {
- await navigator.share(shareData);
+ await navigator.share({ ...shareData, url: fallbackUrl });
  } catch (err) {
  if (err.name !== 'AbortError') showToast('Gagal share: ' + err.message, true);
  }
  } else {
- // Fallback: copy link
+ // Fallback terakhir: download otomatis biar user bisa share manual filenya
  try {
- await navigator.clipboard.writeText(shareData.url);
- showToast('Link disalin ke clipboard!');
+ await navigator.clipboard.writeText(fallbackUrl);
+ showToast('Browser ini tidak bisa share file langsung. Link disalin — atau gunakan tombol Download lalu share manual.');
  } catch {
- showToast('Share tidak didukung browser ini', true);
+ showToast('Share tidak didukung browser ini. Gunakan tombol Download.', true);
  }
  }
 }
