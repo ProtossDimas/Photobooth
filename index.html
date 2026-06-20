@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>The Wedding of Dimas & Nia - Video Booth</title>
+<title>The Wedding of Dimas & Nia - Photo Booth</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Inter:wght@300;400;500;600&display=swap');
 :root {
@@ -81,8 +81,9 @@ body {
  font-family: 'Great Vibes', cursive;
  font-size: 1.8rem;
  color: var(--red-primary);
- line-height: 1.1;
+ line-height: 1.15;
 }
+.logo-main .logo-names { display: block; }
 .logo-main .amp { color: var(--red-light); }
 .header-tagline {
  font-family: 'Cormorant Garamond', serif;
@@ -130,6 +131,33 @@ body {
  font-size: 0.7rem;
  color: var(--text-muted);
  letter-spacing: 0.04em;
+}
+.gallery-marquee {
+ flex: 1;
+ overflow: hidden;
+ white-space: nowrap;
+ position: relative;
+ mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+ -webkit-mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+}
+.gallery-marquee-track {
+ display: inline-flex;
+ width: max-content;
+ animation: marquee-scroll 16s linear infinite;
+}
+.gallery-marquee-item {
+ font-family: 'Cormorant Garamond', serif;
+ font-size: 0.95rem;
+ font-style: italic;
+ font-weight: 600;
+ color: var(--red-primary);
+ letter-spacing: 0.03em;
+ padding-right: 2.5rem;
+ white-space: nowrap;
+}
+@keyframes marquee-scroll {
+ 0% { transform: translateX(0); }
+ 100% { transform: translateX(-50%); }
 }
 .gallery-scroll {
  flex: 1;
@@ -914,15 +942,16 @@ background: rgba(139,26,26,0.08); }
 }
 .footer-copyright {
  font-family: 'Cormorant Garamond', serif;
- font-size: 0.62rem;
+ font-size: 0.8rem;
+ font-weight: 600;
  font-style: italic;
  color: var(--text-muted);
- opacity: 0.65;
+ opacity: 0.85;
  letter-spacing: 0.06em;
 }
 .footer-copyright .footer-names {
  color: var(--red-primary);
- font-weight: 400;
+ font-weight: 700;
 }
 /* ------------------------------------------------------------
    FRAME CANVAS (offscreen composite)
@@ -958,13 +987,13 @@ background: rgba(139,26,26,0.08); }
 <body>
 <!-- HEADER -->
 <header class="site-header">
- <p class="header-eyebrow">Wedding Video Booth</p>
+ <p class="header-eyebrow">Wedding Photo Booth</p>
  <div class="header-ornament">
  <div class="ornament-line"></div>
  <span class="ornament-dot">✦ ✦ ✦</span>
  <div class="ornament-line r"></div>
  </div>
- <div class="logo-main">The Wedding of Dimas <span class="amp">&amp;</span> Nia</div>
+ <div class="logo-main">The Wedding of<span class="logo-names">Dimas <span class="amp">&amp;</span> Nia</span></div>
  <p class="header-tagline">leaves a moment · treasures a memory</p>
 </header>
 <!-- APP BODY -->
@@ -972,8 +1001,12 @@ background: rgba(139,26,26,0.08); }
  <!-- GALLERY PANEL (full width) -->
  <div class="gallery-panel">
  <div class="gallery-header">
- <div class="gallery-title">Momen Terkini</div>
- <div class="gallery-count" id="gallery-count">Memuat...</div>
+ <div class="gallery-marquee">
+ <div class="gallery-marquee-track" id="gallery-marquee-track">
+ <span class="gallery-marquee-item" id="gallery-marquee-item-1">0 momen recorded · leaves your moment here</span>
+ <span class="gallery-marquee-item" id="gallery-marquee-item-2">0 momen recorded · leaves your moment here</span>
+ </div>
+ </div>
  </div>
  <div class="gallery-scroll" id="gallery-scroll">
  <div class="gallery-empty" id="gallery-empty">
@@ -3849,8 +3882,11 @@ async function confirmSend() {
 function renderGallery() {
  const scroll = document.getElementById('gallery-scroll');
  const empty = document.getElementById('gallery-empty');
- const count = document.getElementById('gallery-count');
- count.textContent = gallery.length + ' momen terekam';
+ const marqueeText = gallery.length + ' momen recorded · leaves your moment here';
+ const m1 = document.getElementById('gallery-marquee-item-1');
+ const m2 = document.getElementById('gallery-marquee-item-2');
+ if (m1) m1.textContent = marqueeText;
+ if (m2) m2.textContent = marqueeText;
  if (gallery.length === 0) {
  empty.style.display = 'flex';
  scroll.querySelectorAll('.g-card').forEach(c => c.remove());
@@ -3922,8 +3958,11 @@ async function loadGalleryFromServer() {
  } catch (_) {}
  if (!res.ok || data.error) {
  console.error('[Gallery] API error:', data.error || res.status);
- document.getElementById('gallery-count').textContent = 'Gagal memuat - ' +
-(data.error || 'coba refresh');
+ const m1err = document.getElementById('gallery-marquee-item-1');
+ const m2err = document.getElementById('gallery-marquee-item-2');
+ const errText = 'Gagal memuat - ' + (data.error || 'coba refresh');
+ if (m1err) m1err.textContent = errText;
+ if (m2err) m2err.textContent = errText;
  renderGallery();
  return;
  }
