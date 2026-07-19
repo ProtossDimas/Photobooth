@@ -3645,10 +3645,9 @@ const SITE_BACKGROUND = {
  folder: 'photos/',            // nama folder di repo (sertakan slash di akhir)
  files: [
  'bgweb.jpeg',
- 'foto2.jpg',
- 'foto3.jpg',
- // 👇 tambahkan foto lain di sini, contoh:
- // 'foto4.jpg',
+ // 👇 tambahkan foto lain di sini kalau mau slideshow, contoh:
+ // 'foto2.jpg',
+ // 'foto3.jpg',
  ],
  intervalMs: 6000,
  overlayOpacity: 0,
@@ -3726,19 +3725,39 @@ function initSiteBackground() {
  wrap.classList.add('active');
 
  let idx = 0;
- layerA.src = urls[0];
- layerA.classList.add('show');
  let showingA = true;
+ let hasShownAny = false;
+
+ // Muat satu foto ke layer yang sedang tidak tampil. Foto yang sedang
+ // tampil TIDAK akan disembunyikan sampai foto pengganti benar-benar
+ // berhasil dimuat — jadi kalau ada nama file yang salah/404 di config,
+ // background tidak akan pernah jadi kosong/hilang.
+ function loadIntoNextLayer(i) {
+ const nextLayer = showingA ? layerB : layerA;
+ const curLayer = showingA ? layerA : layerB;
+ const tempImg = new Image();
+ tempImg.onload = () => {
+ nextLayer.src = urls[i];
+ nextLayer.classList.add('show');
+ curLayer.classList.remove('show');
+ showingA = !showingA;
+ hasShownAny = true;
+ };
+ tempImg.onerror = () => {
+ console.warn('[SITE_BACKGROUND] File tidak ditemukan, dilewati:', urls[i]);
+ // Coba file berikutnya sebentar lagi, foto yang sedang tampil tetap dibiarkan
+ idx = (idx + 1) % urls.length;
+ if (idx !== 0 || !hasShownAny) setTimeout(() => loadIntoNextLayer(idx), 400);
+ };
+ tempImg.src = urls[i];
+ }
+
+ loadIntoNextLayer(idx);
 
  if (urls.length > 1) {
  setInterval(() => {
  idx = (idx + 1) % urls.length;
- const nextLayer = showingA ? layerB : layerA;
- const curLayer = showingA ? layerA : layerB;
- nextLayer.src = urls[idx];
- nextLayer.classList.add('show');
- curLayer.classList.remove('show');
- showingA = !showingA;
+ loadIntoNextLayer(idx);
  }, Math.max(2000, SITE_BACKGROUND.intervalMs || 6000));
  }
 }
