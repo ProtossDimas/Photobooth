@@ -38,6 +38,33 @@ body {
  display: flex;
  flex-direction: column;
  overflow-x: hidden;
+ position: relative;
+}
+/* ------------------------------------------------------------
+   SITE BACKGROUND (foto / video) — lihat SITE_BACKGROUND di script
+   ------------------------------------------------------------ */
+.site-bg {
+ position: fixed;
+ inset: 0;
+ width: 100%;
+ height: 100%;
+ z-index: -2;
+ overflow: hidden;
+ display: none; /* diaktifkan lewat JS kalau SITE_BACKGROUND.enabled = true */
+ background: var(--cream);
+}
+.site-bg.active { display: block; }
+.site-bg img,
+.site-bg video {
+ width: 100%;
+ height: 100%;
+ object-fit: cover;
+ display: block;
+}
+.site-bg-overlay {
+ position: absolute;
+ inset: 0;
+ background: var(--cream);
 }
 /* ------------------------------------------------------------
    HEADER
@@ -445,6 +472,24 @@ transition:stroke-dashoffset 1s linear; }
 }
 @keyframes countPop { 0%{transform:scale(1.5);opacity:0} 40%{opacity:1} 100%
 {transform:scale(1)} }
+/* Photo shot hint badge (mode 2 foto dalam 1 frame) */
+.photo-shot-hint {
+ position: absolute;
+ top: 14px;
+ left: 50%;
+ transform: translateX(-50%);
+ background: rgba(0,0,0,0.6);
+ color: white;
+ font-size: 0.72rem;
+ font-weight: 600;
+ padding: 5px 14px;
+ border-radius: 20px;
+ z-index: 15;
+ display: none;
+ letter-spacing: 0.03em;
+ white-space: nowrap;
+}
+.photo-shot-hint.show { display: block; }
 /* Flash effect */
 .flash-overlay {
  position: absolute;
@@ -985,6 +1030,10 @@ background: rgba(139,26,26,0.08); }
 </style>
 </head>
 <body>
+<!-- Background foto/video halaman — diatur lewat SITE_BACKGROUND di bagian script -->
+<div class="site-bg" id="site-bg">
+ <div class="site-bg-overlay" id="site-bg-overlay"></div>
+</div>
 <!-- HEADER -->
 <header class="site-header">
  <p class="header-eyebrow">Wedding Photo Booth</p>
@@ -3433,6 +3482,7 @@ aenCYD0qpLks++xnoAPXh1PCbittcAaBST2HAAp1OXU2Uc8cS5tg+kc96eobIAAA"
  id="camera-frame-img">
  </div>
  <div class="flash-overlay" id="flash-overlay"></div>
+ <div class="photo-shot-hint" id="photo-shot-hint"></div>
  <!-- Close button inside camera wrap -->
  <button class="camera-close" onclick="closeCameraModal()" title="Tutup">
  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line
@@ -3573,6 +3623,35 @@ y2="10.49"/></svg>
 // 4. Kalau mau lagu acak / playlist berganti2, ubah BACKSOUND_MODE
 //    jadi 'random' atau 'sequence' (lihat penjelasan di bawah array).
 // ----------------------------------------------------------------
+// ════════════════════════════════════════════════════════════
+// 🖼️ BACKGROUND HALAMAN (FOTO / VIDEO) — CARA GANTI:
+// 1. enabled: true/false — nyalakan/matikan background custom.
+//    Kalau false, halaman pakai warna cream polos seperti biasa.
+// 2. type: 'image' atau 'video'.
+// 3. url: link foto/video (upload dulu ke repo GitHub / hosting lain,
+//    lalu isi nama file atau URL lengkapnya di sini).
+// 4. overlayOpacity: 0.0 - 1.0 — lapisan warna cream transparan di atas
+//    foto/video supaya teks & tombol tetap gampang dibaca. Makin besar
+//    angkanya, makin pudar foto/videonya (0 = foto terlihat 100% jelas).
+// ----------------------------------------------------------------
+const SITE_BACKGROUND = {
+ enabled: false,               // ubah jadi true untuk mengaktifkan
+ type: 'image',                // 'image' atau 'video'
+ url: '',                      // contoh: 'bg-wedding.jpg' atau 'bg-wedding.mp4'
+ overlayOpacity: 0.82,
+};
+// ════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════
+// 📸 JUMLAH FOTO DALAM 1 FRAME
+// PHOTOS_PER_FRAME = 1 -> perilaku lama, 1 foto = 1 frame.
+// PHOTOS_PER_FRAME = 2 -> tamu ambil 2 foto berturut-turut, lalu
+//                          keduanya digabung bersusun (atas-bawah)
+//                          jadi satu foto sebelum dibingkai frame.
+// ════════════════════════════════════════════════════════════
+const PHOTOS_PER_FRAME = 2;
+// ════════════════════════════════════════════════════════════
+
 const BACKSOUND_PLAYLIST = [
  { title: 'Lagu Utama', url: 'Banda Neira - Sampai Jadi Debu.mp3' },   //ubah music disini, upload dulu tapi filenya di repo github
  // 👇 Tambahkan lagu berikutnya di sini, contoh:
@@ -3594,6 +3673,7 @@ let facingMode = 'user';
 let currentMode = 'photo';
 let capturedBlob = null;
 let capturedType = null;
+let photoShots = []; // dipakai saat PHOTOS_PER_FRAME > 1 (foto sementara sebelum digabung)
 let gallery = [];
 let currentVNUrl = null;
 let currentEntry = null; // entry being viewed in play modal
@@ -3611,13 +3691,41 @@ let vnAnalyser = null;
 let vnDataArr = null;
 // ---- Init ----
 window.addEventListener('DOMContentLoaded', async () => {
+ initSiteBackground();
  loadGalleryFromServer();
  initBgMusic();
 });
+// ---- Background halaman (foto/video) ----
+function initSiteBackground() {
+ if (!SITE_BACKGROUND.enabled || !SITE_BACKGROUND.url) return;
+ const wrap = document.getElementById('site-bg');
+ const overlay = document.getElementById('site-bg-overlay');
+ let media;
+ if (SITE_BACKGROUND.type === 'video') {
+ media = document.createElement('video');
+ media.src = SITE_BACKGROUND.url;
+ media.autoplay = true;
+ media.muted = true;
+ media.loop = true;
+ media.playsInline = true;
+ } else {
+ media = document.createElement('img');
+ media.src = SITE_BACKGROUND.url;
+ media.alt = '';
+ }
+ wrap.insertBefore(media, overlay);
+ overlay.style.opacity = SITE_BACKGROUND.overlayOpacity;
+ wrap.classList.add('active');
+ if (media.tagName === 'VIDEO') {
+ media.play().catch(() => {});
+ }
+}
 // ---- Camera Modal ----
 async function openCameraModal() {
  document.getElementById('camera-modal').classList.add('open');
  document.getElementById('fab').classList.add('open');
+ photoShots = [];
+ hidePhotoShotHint();
  // Start jika belum pernah atau stream sudah mati
  if (!cameraStarted || !stream || stream.getTracks().every(t => t.readyState === 'ended'))
 {
@@ -3709,11 +3817,88 @@ function takePhoto() {
  const flash = document.getElementById('flash-overlay');
  flash.classList.add('flash');
  setTimeout(() => flash.classList.remove('flash'), 150);
- canvas.toBlob(blob => {
- capturedBlob = blob;
+ canvas.toBlob(async blob => {
+ photoShots.push(blob);
+ if (photoShots.length < PHOTOS_PER_FRAME) {
+ // Masih kurang foto -> tetap di layar live, minta jepretan berikutnya
+ updatePhotoShotHint();
+ return;
+ }
+ // Semua jepretan sudah lengkap -> gabung jadi satu foto (atas-bawah)
+ hidePhotoShotHint();
+ let combined = blob;
+ if (photoShots.length > 1) {
+ try {
+ combined = await composeSplitPhotos(photoShots);
+ } catch (e) {
+ console.warn('Gagal menggabungkan foto, pakai foto terakhir saja:', e);
+ }
+ }
+ capturedBlob = combined;
  capturedType = 'photo';
- showPlayback(URL.createObjectURL(blob), 'photo');
+ showPlayback(URL.createObjectURL(combined), 'photo');
  }, 'image/jpeg', 0.92);
+}
+// ---- Gabungkan beberapa foto jadi 1 gambar tersusun (dipakai untuk PHOTOS_PER_FRAME > 1) ----
+function updatePhotoShotHint() {
+ const el = document.getElementById('photo-shot-hint');
+ if (!el || PHOTOS_PER_FRAME <= 1) return;
+ el.textContent = `Foto ${photoShots.length}/${PHOTOS_PER_FRAME} — ambil foto berikutnya`;
+ el.classList.add('show');
+}
+function hidePhotoShotHint() {
+ const el = document.getElementById('photo-shot-hint');
+ if (el) el.classList.remove('show');
+}
+function loadImgFromBlob(blob) {
+ return new Promise((resolve, reject) => {
+ const img = new Image();
+ const url = URL.createObjectURL(blob);
+ img.onload = () => resolve({ img, url });
+ img.onerror = () => reject(new Error('Gagal memuat foto'));
+ img.src = url;
+ });
+}
+function drawImageCover(ctx, img, x, y, w, h) {
+ const ir = img.naturalWidth / img.naturalHeight;
+ const tr = w / h;
+ let sx, sy, sw, sh;
+ if (ir > tr) {
+ sh = img.naturalHeight;
+ sw = sh * tr;
+ sx = (img.naturalWidth - sw) / 2;
+ sy = 0;
+ } else {
+ sw = img.naturalWidth;
+ sh = sw / tr;
+ sx = 0;
+ sy = (img.naturalHeight - sh) / 2;
+ }
+ ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+async function composeSplitPhotos(blobs) {
+ const loaded = await Promise.all(blobs.map(loadImgFromBlob));
+ const first = loaded[0].img;
+ const W = first.naturalWidth || 1080;
+ const H = first.naturalHeight || 1920;
+ const canvas = document.createElement('canvas');
+ canvas.width = W;
+ canvas.height = H;
+ const ctx = canvas.getContext('2d');
+ // Latar cream dulu, supaya celah pembatas antar foto terlihat rapi
+ ctx.fillStyle = '#FDF8F5';
+ ctx.fillRect(0, 0, W, H);
+ const n = loaded.length;
+ const gap = Math.max(4, Math.round(H * 0.012));
+ const cellH = Math.floor((H - gap * (n - 1)) / n);
+ loaded.forEach(({ img }, i) => {
+ const y = i * (cellH + gap);
+ drawImageCover(ctx, img, 0, y, W, cellH);
+ });
+ loaded.forEach(({ url }) => URL.revokeObjectURL(url));
+ return new Promise((resolve, reject) => {
+ canvas.toBlob(b => b ? resolve(b) : reject(new Error('Canvas toBlob gagal')), 'image/jpeg', 0.93);
+ });
 }
 // ---- Show captured preview ----
 function showPlayback(url, type) {
@@ -3749,6 +3934,8 @@ function retake() {
  resetVNRecorder();
  capturedBlob = null;
  capturedType = null;
+ photoShots = [];
+ hidePhotoShotHint();
  const playback = document.getElementById('video-playback');
  playback.pause(); playback.src = ''; playback.style.display = 'none';
  const img = document.getElementById('photo-preview');
