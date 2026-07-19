@@ -54,13 +54,17 @@ body {
  background: var(--cream);
 }
 .site-bg.active { display: block; }
-.site-bg img,
-.site-bg video {
+.site-bg-img {
+ position: absolute;
+ inset: 0;
  width: 100%;
  height: 100%;
  object-fit: cover;
  display: block;
+ opacity: 0;
+ transition: opacity 1.4s ease;
 }
+.site-bg-img.show { opacity: 1; }
 .site-bg-overlay {
  position: absolute;
  inset: 0;
@@ -3624,20 +3628,29 @@ y2="10.49"/></svg>
 //    jadi 'random' atau 'sequence' (lihat penjelasan di bawah array).
 // ----------------------------------------------------------------
 // ════════════════════════════════════════════════════════════
-// 🖼️ BACKGROUND HALAMAN (FOTO / VIDEO) — CARA GANTI:
+// 🖼️ BACKGROUND HALAMAN (SLIDESHOW FOTO DARI FOLDER GITHUB) — CARA GANTI:
 // 1. enabled: true/false — nyalakan/matikan background custom.
 //    Kalau false, halaman pakai warna cream polos seperti biasa.
-// 2. type: 'image' atau 'video'.
-// 3. url: link foto/video (upload dulu ke repo GitHub / hosting lain,
-//    lalu isi nama file atau URL lengkapnya di sini).
-// 4. overlayOpacity: 0.0 - 1.0 — lapisan warna cream transparan di atas
-//    foto/video supaya teks & tombol tetap gampang dibaca. Makin besar
-//    angkanya, makin pudar foto/videonya (0 = foto terlihat 100% jelas).
+// 2. folder: nama folder di repo GitHub tempat kamu upload foto-fotonya
+//    (folder "photos" harus sudah di-push ke repo, sejajar dengan index.html).
+// 3. files: daftar nama file foto di dalam folder itu. Tinggal tambah/hapus
+//    baris sesuai foto yang kamu upload. Urutan di sini = urutan slideshow.
+// 4. intervalMs: jeda pergantian foto (dalam milidetik). 6000 = 6 detik.
+// 5. overlayOpacity: 0.0 - 1.0 — lapisan warna cream transparan di atas foto
+//    supaya teks & tombol tetap gampang dibaca. Makin besar angkanya, makin
+//    pudar fotonya (0 = foto terlihat 100% jelas).
 // ----------------------------------------------------------------
 const SITE_BACKGROUND = {
- enabled: false,               // ubah jadi true untuk mengaktifkan
- type: 'image',                // 'image' atau 'video'
- url: '',                      // contoh: 'bg-wedding.jpg' atau 'bg-wedding.mp4'
+ enabled: true,
+ folder: 'photos/',            // nama folder di repo (sertakan slash di akhir)
+ files: [
+ 'foto1.jpg',
+ 'foto2.jpg',
+ 'foto3.jpg',
+ // 👇 tambahkan foto lain di sini, contoh:
+ // 'foto4.jpg',
+ ],
+ intervalMs: 6000,
  overlayOpacity: 0.82,
 };
 // ════════════════════════════════════════════════════════════
@@ -3695,29 +3708,38 @@ window.addEventListener('DOMContentLoaded', async () => {
  loadGalleryFromServer();
  initBgMusic();
 });
-// ---- Background halaman (foto/video) ----
+// ---- Background halaman (slideshow foto dari folder GitHub) ----
 function initSiteBackground() {
- if (!SITE_BACKGROUND.enabled || !SITE_BACKGROUND.url) return;
+ if (!SITE_BACKGROUND.enabled || !SITE_BACKGROUND.files || SITE_BACKGROUND.files.length === 0) return;
  const wrap = document.getElementById('site-bg');
  const overlay = document.getElementById('site-bg-overlay');
- let media;
- if (SITE_BACKGROUND.type === 'video') {
- media = document.createElement('video');
- media.src = SITE_BACKGROUND.url;
- media.autoplay = true;
- media.muted = true;
- media.loop = true;
- media.playsInline = true;
- } else {
- media = document.createElement('img');
- media.src = SITE_BACKGROUND.url;
- media.alt = '';
- }
- wrap.insertBefore(media, overlay);
+ const folder = SITE_BACKGROUND.folder || '';
+ const urls = SITE_BACKGROUND.files.map(f => folder + f);
+
+ const layerA = document.createElement('img');
+ const layerB = document.createElement('img');
+ layerA.className = 'site-bg-img';
+ layerB.className = 'site-bg-img';
+ wrap.insertBefore(layerA, overlay);
+ wrap.insertBefore(layerB, overlay);
  overlay.style.opacity = SITE_BACKGROUND.overlayOpacity;
  wrap.classList.add('active');
- if (media.tagName === 'VIDEO') {
- media.play().catch(() => {});
+
+ let idx = 0;
+ layerA.src = urls[0];
+ layerA.classList.add('show');
+ let showingA = true;
+
+ if (urls.length > 1) {
+ setInterval(() => {
+ idx = (idx + 1) % urls.length;
+ const nextLayer = showingA ? layerB : layerA;
+ const curLayer = showingA ? layerA : layerB;
+ nextLayer.src = urls[idx];
+ nextLayer.classList.add('show');
+ curLayer.classList.remove('show');
+ showingA = !showingA;
+ }, Math.max(2000, SITE_BACKGROUND.intervalMs || 6000));
  }
 }
 // ---- Camera Modal ----
