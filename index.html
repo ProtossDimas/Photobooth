@@ -494,6 +494,35 @@ transition:stroke-dashoffset 1s linear; }
  white-space: nowrap;
 }
 .photo-shot-hint.show { display: block; }
+/* Freeze preview antar jepretan 1 & 2 (biar jelas 2 momen berbeda) */
+.shot-freeze-overlay {
+ position: absolute;
+ inset: 0;
+ z-index: 16;
+ display: none;
+ background: #000;
+}
+.shot-freeze-overlay.show { display: block; }
+.shot-freeze-overlay img {
+ width: 100%;
+ height: 100%;
+ object-fit: cover;
+ display: block;
+}
+.shot-freeze-badge {
+ position: absolute;
+ bottom: 18px;
+ left: 50%;
+ transform: translateX(-50%);
+ background: rgba(139,26,26,0.9);
+ color: white;
+ padding: 8px 18px;
+ border-radius: 20px;
+ font-size: 0.8rem;
+ font-weight: 600;
+ white-space: nowrap;
+ text-align: center;
+}
 /* Flash effect */
 .flash-overlay {
  position: absolute;
@@ -3487,6 +3516,10 @@ aenCYD0qpLks++xnoAPXh1PCbittcAaBST2HAAp1OXU2Uc8cS5tg+kc96eobIAAA"
  </div>
  <div class="flash-overlay" id="flash-overlay"></div>
  <div class="photo-shot-hint" id="photo-shot-hint"></div>
+ <div class="shot-freeze-overlay" id="shot-freeze-overlay">
+ <img id="shot-freeze-img" alt="">
+ <div class="shot-freeze-badge" id="shot-freeze-badge"></div>
+ </div>
  <!-- Close button inside camera wrap -->
  <button class="camera-close" onclick="closeCameraModal()" title="Tutup">
  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line
@@ -3861,8 +3894,10 @@ function takePhoto() {
  canvas.toBlob(async blob => {
  photoShots.push(blob);
  if (photoShots.length < PHOTOS_PER_FRAME) {
- // Masih kurang foto -> tetap di layar live, minta jepretan berikutnya
- updatePhotoShotHint();
+ // Masih kurang foto -> beri jeda + preview supaya tamu benar-benar
+ // ganti pose/posisi dulu sebelum jepretan berikutnya, tidak asal 2x
+ // klik cepat yang hasilnya bisa mirip/sama persis.
+ showShotFreeze(blob, photoShots.length);
  return;
  }
  // Semua jepretan sudah lengkap -> gabung jadi satu foto (atas-bawah)
@@ -3879,6 +3914,34 @@ function takePhoto() {
  capturedType = 'photo';
  showPlayback(URL.createObjectURL(combined), 'photo');
  }, 'image/jpeg', 0.92);
+}
+// ---- Freeze preview + countdown antara jepretan 1 & 2 ----
+function showShotFreeze(blob, shotNum) {
+ const overlay = document.getElementById('shot-freeze-overlay');
+ const img = document.getElementById('shot-freeze-img');
+ const badge = document.getElementById('shot-freeze-badge');
+ const shutterBtn = document.getElementById('btn-shutter');
+ const url = URL.createObjectURL(blob);
+ img.src = url;
+ overlay.classList.add('show');
+ shutterBtn.disabled = true;
+ let secondsLeft = 3;
+ const updateBadge = () => {
+ badge.textContent = `Foto ${shotNum}/${PHOTOS_PER_FRAME} tersimpan — ganti pose, foto berikutnya dalam ${secondsLeft}...`;
+ };
+ updateBadge();
+ const timer = setInterval(() => {
+ secondsLeft--;
+ if (secondsLeft <= 0) {
+ clearInterval(timer);
+ overlay.classList.remove('show');
+ URL.revokeObjectURL(url);
+ shutterBtn.disabled = false;
+ updatePhotoShotHint();
+ } else {
+ updateBadge();
+ }
+ }, 1000);
 }
 // ---- Gabungkan beberapa foto jadi 1 gambar tersusun (dipakai untuk PHOTOS_PER_FRAME > 1) ----
 function updatePhotoShotHint() {
@@ -3930,12 +3993,22 @@ async function composeSplitPhotos(blobs) {
  ctx.fillStyle = '#FDF8F5';
  ctx.fillRect(0, 0, W, H);
  const n = loaded.length;
- const gap = Math.max(4, Math.round(H * 0.012));
+ const gap = Math.max(18, Math.round(H * 0.02)); // celah pemisah, dibuat cukup terlihat
  const cellH = Math.floor((H - gap * (n - 1)) / n);
  loaded.forEach(({ img }, i) => {
  const y = i * (cellH + gap);
  drawImageCover(ctx, img, 0, y, W, cellH);
  });
+ // Garis tipis merah di tengah tiap celah, biar jelas kelihatan ini 2 foto terpisah
+ ctx.strokeStyle = '#8B1A1A';
+ ctx.lineWidth = Math.max(2, Math.round(H * 0.0015));
+ for (let i = 1; i < n; i++) {
+ const gapCenterY = i * cellH + (i - 1) * gap + gap / 2;
+ ctx.beginPath();
+ ctx.moveTo(W * 0.06, gapCenterY);
+ ctx.lineTo(W * 0.94, gapCenterY);
+ ctx.stroke();
+ }
  loaded.forEach(({ url }) => URL.revokeObjectURL(url));
  return new Promise((resolve, reject) => {
  canvas.toBlob(b => b ? resolve(b) : reject(new Error('Canvas toBlob gagal')), 'image/jpeg', 0.93);
@@ -3977,6 +4050,10 @@ function retake() {
  capturedType = null;
  photoShots = [];
  hidePhotoShotHint();
+ const freezeOverlay = document.getElementById('shot-freeze-overlay');
+ if (freezeOverlay) freezeOverlay.classList.remove('show');
+ const shutterBtn = document.getElementById('btn-shutter');
+ if (shutterBtn) shutterBtn.disabled = false;
  const playback = document.getElementById('video-playback');
  playback.pause(); playback.src = ''; playback.style.display = 'none';
  const img = document.getElementById('photo-preview');
@@ -7020,6 +7097,19 @@ function initBgMusic() {
  document.addEventListener('click', unmuteOnFirstInteraction, { once: true });
  document.addEventListener('touchstart', unmuteOnFirstInteraction, { once: true });
  document.addEventListener('keydown', unmuteOnFirstInteraction, { once: true });
+
+ // Auto pause saat tab/app disembunyikan (pindah tab, buka app lain, kunci layar),
+ // dan otomatis lanjut lagi saat kembali — kecuali user memang sengaja menekan
+ // tombol mute sebelumnya (bgMusicUserPaused).
+ document.addEventListener('visibilitychange', () => {
+ if (document.hidden) {
+ if (!audio.paused) audio.pause();
+ } else {
+ if (!bgMusicUserPaused && audio.paused) {
+ audio.play().then(() => updateMusicButtonUI(true)).catch(() => updateMusicButtonUI(false));
+ }
+ }
+ });
 }
 
 function playNextBgTrack() {
