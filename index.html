@@ -74,15 +74,36 @@ body {
    HEADER
    ------------------------------------------------------------ */
 .site-header {
- background: var(--white);
- border-bottom: 1px solid var(--red-border);
- border-top: 3px solid var(--red-primary);
- padding: 0.75rem 1.5rem 0.6rem;
+ background: #1a1a1a url('photos/bgweb.jpeg') center 30% / cover no-repeat;
+ padding: 1.6rem 1.5rem 2.6rem;
  text-align: center;
  flex-shrink: 0;
  position: relative;
  z-index: 10;
- box-shadow: 0 2px 12px rgba(139,26,26,0.08);
+ overflow: hidden;
+ min-height: 300px;
+ display: flex;
+ flex-direction: column;
+ justify-content: flex-end;
+ align-items: center;
+}
+.site-header::before {
+ content: '';
+ position: absolute;
+ inset: 0;
+ background: linear-gradient(to bottom,
+ rgba(20,15,10,0.28) 0%,
+ rgba(20,15,10,0.05) 35%,
+ rgba(20,15,10,0.35) 75%,
+ var(--cream) 100%);
+ z-index: 1;
+}
+.header-eyebrow,
+.header-ornament,
+.logo-main,
+.header-tagline {
+ position: relative;
+ z-index: 2;
 }
 .header-eyebrow {
  font-family: 'Inter', sans-serif;
@@ -90,40 +111,44 @@ body {
  font-weight: 500;
  letter-spacing: 0.25em;
  text-transform: uppercase;
- color: var(--red-primary);
- opacity: 0.7;
- margin-bottom: 2px;
+ color: var(--white);
+ opacity: 0.85;
+ margin-bottom: 4px;
+ text-shadow: 0 1px 6px rgba(0,0,0,0.35);
 }
 .header-ornament {
  display: flex;
  align-items: center;
  justify-content: center;
  gap: 0.75rem;
- margin-bottom: 2px;
+ margin-bottom: 4px;
 }
 .ornament-line {
  height: 1px;
  width: 44px;
- background: linear-gradient(to right, transparent, var(--red-primary));
+ background: linear-gradient(to right, transparent, var(--white));
+ opacity: 0.75;
 }
-.ornament-line.r { background: linear-gradient(to left, transparent, var(--red-primary)); }
-.ornament-dot { color: var(--red-primary); font-size: 0.45rem; letter-spacing: 4px; }
+.ornament-line.r { background: linear-gradient(to left, transparent, var(--white)); }
+.ornament-dot { color: var(--white); font-size: 0.45rem; letter-spacing: 4px; text-shadow: 0 1px 6px rgba(0,0,0,0.35); }
 .logo-main {
  font-family: 'Great Vibes', cursive;
- font-size: 1.8rem;
- color: var(--red-primary);
+ font-size: 2.4rem;
+ color: var(--white);
  line-height: 1.15;
+ text-shadow: 0 2px 14px rgba(0,0,0,0.45);
 }
 .logo-main .logo-names { display: block; }
-.logo-main .amp { color: var(--red-light); }
+.logo-main .amp { color: var(--rose-light); }
 .header-tagline {
  font-family: 'Cormorant Garamond', serif;
- font-size: 0.65rem;
+ font-size: 0.7rem;
  font-style: italic;
- color: var(--text-muted);
+ color: var(--white);
  letter-spacing: 0.14em;
- opacity: 0.8;
- margin-top: 2px;
+ opacity: 0.9;
+ margin-top: 6px;
+ text-shadow: 0 1px 6px rgba(0,0,0,0.35);
 }
 /* ------------------------------------------------------------
    GALLERY - full-width layout
