@@ -293,7 +293,7 @@ rgba(0,0,0,0.6)); }
 /* Watermark kecil di pojok atas foto */
 .g-watermark {
  position: absolute;
- top: 32px;
+ top: 5px;
  left: 50%;
  transform: translateX(-50%);
  z-index: 3;
@@ -4172,16 +4172,76 @@ function takePhoto() {
  showPlayback(URL.createObjectURL(combined), 'photo');
  }, 'image/jpeg', 0.92);
 }
+// ---- Susun preview kotak-kotak frame sesuai jepretan yang sudah diambil ----
+// Kotak yang sudah punya foto -> tampilkan foto tsb persis di posisi jendelanya.
+// Kotak yang belum diambil -> tampilkan placeholder kosong bernomor, supaya
+// tamu tahu tinggal berapa foto lagi dan di kotak mana posisinya.
+async function buildFramePreviewImage(shotsSoFar) {
+ const frameSlots = FRAME_DEFS[selectedFrameId] && FRAME_DEFS[selectedFrameId].slots;
+ if (!frameSlots || shotsSoFar.length === 0) return null; // fallback ke preview biasa
+ let loaded = [];
+ try {
+ loaded = await Promise.all(shotsSoFar.map(loadImgFromBlob));
+ } catch (e) {
+ return null;
+ }
+ const first = loaded[0].img;
+ const W = first.naturalWidth || 1080;
+ const H = first.naturalHeight || 1920;
+ const canvas = document.createElement('canvas');
+ canvas.width = W;
+ canvas.height = H;
+ const ctx = canvas.getContext('2d');
+ ctx.fillStyle = '#FDF8F5';
+ ctx.fillRect(0, 0, W, H);
+ frameSlots.forEach((s, i) => {
+ const sx = Math.round(s.x * W), sy = Math.round(s.y * H);
+ const sw = Math.round(s.w * W), sh = Math.round(s.h * H);
+ if (loaded[i]) {
+ // Kotak ini sudah punya foto -> gambar persis di jendelanya
+ drawImageCover(ctx, loaded[i].img, sx, sy, sw, sh);
+ } else {
+ // Kotak ini belum diambil -> placeholder kosong bernomor urut
+ ctx.save();
+ ctx.fillStyle = 'rgba(139,26,26,0.08)';
+ ctx.fillRect(sx, sy, sw, sh);
+ const lw = Math.max(2, Math.round(H * 0.0018));
+ ctx.strokeStyle = 'rgba(139,26,26,0.35)';
+ ctx.lineWidth = lw;
+ ctx.setLineDash([Math.round(H * 0.012), Math.round(H * 0.009)]);
+ ctx.strokeRect(sx + lw / 2, sy + lw / 2, sw - lw, sh - lw);
+ ctx.setLineDash([]);
+ ctx.fillStyle = 'rgba(139,26,26,0.5)';
+ ctx.font = `600 ${Math.round(sh * 0.26)}px Inter, sans-serif`;
+ ctx.textAlign = 'center';
+ ctx.textBaseline = 'middle';
+ ctx.fillText(String(i + 1), sx + sw / 2, sy + sh / 2);
+ ctx.restore();
+ }
+ });
+ // Overlay bingkai PNG di atasnya biar terlihat persis seperti hasil final
+ try {
+ const frameImg = await getFramePngImg(selectedFrameId);
+ ctx.drawImage(frameImg, 0, 0, W, H);
+ } catch (e) { /* biarkan tanpa overlay kalau gagal load */ }
+ loaded.forEach(l => URL.revokeObjectURL(l.url));
+ return new Promise(resolve => canvas.toBlob(b => resolve(b), 'image/jpeg', 0.92));
+}
 // ---- Freeze preview + countdown antara jepretan 1 & 2 ----
-function showShotFreeze(blob, shotNum) {
+async function showShotFreeze(blob, shotNum) {
  const overlay = document.getElementById('shot-freeze-overlay');
  const img = document.getElementById('shot-freeze-img');
  const badge = document.getElementById('shot-freeze-badge');
  const shutterBtn = document.getElementById('btn-shutter');
- const url = URL.createObjectURL(blob);
+ shutterBtn.disabled = true;
+ // Coba susun preview ke dalam kotak-kotak frame (kotak 1 terisi, kotak
+ // sisanya masih placeholder kosong bernomor). Kalau frame ini tidak
+ // punya definisi slot, fallback ke foto mentah seperti sebelumnya.
+ let url;
+ const previewBlob = await buildFramePreviewImage(photoShots);
+ url = URL.createObjectURL(previewBlob || blob);
  img.src = url;
  overlay.classList.add('show');
- shutterBtn.disabled = true;
  let secondsLeft = 3;
  const updateBadge = () => {
  badge.textContent = `Foto ${shotNum}/${PHOTOS_PER_FRAME} tersimpan — ganti pose, foto berikutnya dalam ${secondsLeft}...`;
@@ -4512,11 +4572,6 @@ stroke="currentColor" stroke-width="2.5"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 
  ${e.uploadFailed ? '<span style="color:#f08080">⚠️ Gagal upload</span>' : ''}
  </div>
  </div>
- </div>
- <div class="g-caption">
- <div class="g-caption-title">The Wedding of</div>
- <div class="g-caption-names">Dimas &amp; Nia</div>
- <div class="g-caption-date">${fmtDate(e.ts)}</div>
  </div>`;
  card.addEventListener('click', () => openPlayModal(i));
  scroll.appendChild(card);
