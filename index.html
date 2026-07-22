@@ -74,14 +74,14 @@ body {
    HEADER
    ------------------------------------------------------------ */
 .site-header {
- background: #1a1a1a url('photos/bgweb.jpeg') center 30% / cover no-repeat;
- padding: 1.6rem 1.5rem 2.6rem;
+ background: #1a1a1a url('photos/bgweb.jpeg') center center / cover no-repeat;
+ padding: 1.6rem 1.5rem 3rem;
  text-align: center;
  flex-shrink: 0;
  position: relative;
  z-index: 10;
  overflow: hidden;
- min-height: 300px;
+ min-height: 480px;
  display: flex;
  flex-direction: column;
  justify-content: flex-end;
@@ -3763,7 +3763,7 @@ y2="10.49"/></svg>
 //    pudar fotonya (0 = foto terlihat 100% jelas).
 // ----------------------------------------------------------------
 const SITE_BACKGROUND = {
- enabled: true,
+ enabled: false,
  folder: 'photos/',            // nama folder di repo (sertakan slash di akhir)
  files: [
  'bgweb.jpeg',
