@@ -258,20 +258,22 @@ body {
 /* Gallery card - PORTRAIT 9:16 */
 .g-card {
  background: var(--white);
- border: 1px solid rgba(139,26,26,0.15);
- border-radius: 14px;
+ border: 1px solid rgba(139,26,26,0.12);
+ border-radius: 6px;
  overflow: hidden;
  cursor: pointer;
- transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+ transition: transform 0.2s, box-shadow 0.2s;
  position: relative;
+ padding: 10px 10px 0;
+ box-shadow: 0 10px 26px rgba(60,20,20,0.14), 0 2px 6px rgba(60,20,20,0.08);
 }
-.g-card:hover { transform: translateY(-3px); border-color: rgba(139,26,26,0.4); box-shadow:
-0 6px 20px rgba(139,26,26,0.12); }
+.g-card:hover { transform: translateY(-4px) rotate(-0.3deg); box-shadow: 0 16px 34px rgba(60,20,20,0.2), 0 4px 10px rgba(60,20,20,0.1); }
 .g-thumb {
  aspect-ratio: 9/16;
  background: #0a0705;
  position: relative;
  overflow: hidden;
+ border-radius: 2px;
 }
 .g-thumb video, .g-thumb img {
  width: 100%; height: 100%;
@@ -288,26 +290,68 @@ body {
 .g-card:hover .g-play, .g-card:active .g-play { opacity: 1; }
 .g-play svg { width: 40px; height: 40px; color: white; filter: drop-shadow(0 2px 10px
 rgba(0,0,0,0.6)); }
-/* Overlay gradient + name on card */
-.g-overlay {
+/* Watermark kecil di pojok atas foto */
+.g-watermark {
  position: absolute;
- bottom: 0; left: 0; right: 0;
- background: linear-gradient(to top, rgba(0,0,0,0.78) 0%, transparent 100%);
- padding: 2.5rem 0.75rem 0.75rem;
-}
-.g-name {
- font-size: 0.82rem;
+ top: 10px;
+ left: 12px;
+ z-index: 3;
+ font-family: 'Inter', sans-serif;
+ font-size: 0.55rem;
  font-weight: 600;
- color: var(--white);
+ letter-spacing: 0.06em;
+ color: rgba(255,255,255,0.92);
+ text-shadow: 0 1px 5px rgba(0,0,0,0.55);
  white-space: nowrap;
  overflow: hidden;
  text-overflow: ellipsis;
- margin-bottom: 2px;
+ max-width: calc(100% - 24px);
+}
+/* Badge kecil untuk status upload / voice note, di pojok kanan atas foto */
+.g-overlay {
+ position: absolute;
+ top: 10px;
+ right: 12px;
+ z-index: 3;
+ display: flex;
+ align-items: center;
+ gap: 6px;
 }
 .g-meta {
- font-size: 0.62rem;
- color: rgba(255,255,255,0.5);
+ font-size: 0.6rem;
+ color: rgba(255,255,255,0.92);
+ text-shadow: 0 1px 5px rgba(0,0,0,0.55);
  display: flex; align-items: center; gap: 4px;
+}
+/* Caption ala polaroid di bawah foto */
+.g-caption {
+ padding: 8px 4px 14px;
+ text-align: center;
+}
+.g-caption-title {
+ font-family: 'Inter', sans-serif;
+ font-size: 0.52rem;
+ font-weight: 500;
+ letter-spacing: 0.16em;
+ text-transform: uppercase;
+ color: var(--text-muted);
+ opacity: 0.65;
+}
+.g-caption-names {
+ font-family: 'Great Vibes', cursive;
+ font-size: 1.35rem;
+ color: var(--red-primary);
+ line-height: 1.1;
+ margin-top: 1px;
+}
+.g-caption-date {
+ font-family: 'Inter', sans-serif;
+ font-size: 0.58rem;
+ letter-spacing: 0.05em;
+ color: var(--text-muted);
+ opacity: 0.7;
+ margin-top: 3px;
+}
 }
 .g-vn-dot {
  display: inline-flex; align-items: center; gap: 2px;
@@ -4346,6 +4390,7 @@ function renderGallery() {
  card.innerHTML = `
  <div class="g-thumb">
  ${thumbEl}
+ <div class="g-watermark">${escHtml(e.name)}</div>
  <div class="g-play">
  ${isPhoto
  ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -4357,15 +4402,18 @@ function renderGallery() {
  ${e.uploading ? `<div class="g-uploading"><div class="spin"></div>
 <span>Mengunggah...</span></div>` : ''}
  <div class="g-overlay">
- <div class="g-name">${escHtml(e.name)}</div>
  <div class="g-meta">
- ${fmtDate(e.ts)}
  ${e.vnUrl ? `<span class="g-vn-dot"><svg viewBox="0 0 24 24" fill="none"
 stroke="currentColor" stroke-width="2.5"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3
 0 0 1 3-3z"/></svg>VN</span>` : ''}
  ${e.uploadFailed ? '<span style="color:#f08080">⚠️ Gagal upload</span>' : ''}
  </div>
  </div>
+ </div>
+ <div class="g-caption">
+ <div class="g-caption-title">The Wedding of</div>
+ <div class="g-caption-names">Dimas &amp; Nia</div>
+ <div class="g-caption-date">${fmtDate(e.ts)}</div>
  </div>`;
  card.addEventListener('click', () => openPlayModal(i));
  scroll.appendChild(card);
