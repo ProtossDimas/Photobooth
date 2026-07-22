@@ -513,6 +513,30 @@ rgba(0,0,0,0.2); }
 }
 .btn-flip-overlay:hover { background: rgba(0,0,0,0.8); }
 .btn-flip-overlay svg { width: 17px; height: 17px; }
+/* Self timer button — di bawah tombol flip kamera */
+.btn-timer-overlay {
+ position: absolute;
+ top: 106px; right: 14px;
+ min-width: 38px; height: 38px;
+ padding: 0 10px;
+ border-radius: 19px;
+ background: rgba(0,0,0,0.55);
+ border: 1px solid rgba(255,255,255,0.15);
+ color: white;
+ cursor: pointer;
+ display: flex; align-items: center; justify-content: center; gap: 5px;
+ z-index: 20;
+ transition: background 0.2s, border-color 0.2s;
+}
+.btn-timer-overlay:hover { background: rgba(0,0,0,0.8); }
+.btn-timer-overlay svg { width: 16px; height: 16px; flex-shrink: 0; }
+.btn-timer-overlay.active { border-color: var(--red-light); background: rgba(139,26,26,0.75); }
+.btn-timer-label {
+ font-size: 0.68rem;
+ font-weight: 700;
+ letter-spacing: 0.02em;
+ white-space: nowrap;
+}
 /* Rec indicator */
 .rec-badge {
  position: absolute;
@@ -649,34 +673,59 @@ transition:stroke-dashoffset 1s linear; }
 }
 .frame-select-btn.active .frame-select-label { color: var(--rose-light); }
 .frame-select-bar.locked .frame-select-btn { opacity: 0.5; pointer-events: none; }
-/* Freeze preview antar jepretan 1 & 2 (biar jelas 2 momen berbeda) */
-.shot-freeze-overlay {
+/* Strip preview persisten antar jepretan (mode 2 foto dalam 1 frame).
+   Beda dari freeze overlay lama: kamera live TETAP tampil, dan foto yang
+   sudah diambil tetap "nempel" terlihat di sini sampai semua jepretan
+   selesai — seperti photobooth pada umumnya, bukan preview yang hilang. */
+.shot-progress-strip {
  position: absolute;
- inset: 0;
- z-index: 16;
+ top: 14px;
+ left: 50%;
+ transform: translateX(-50%);
+ z-index: 15;
  display: none;
- background: #000;
+ flex-direction: column;
+ align-items: center;
+ gap: 6px;
 }
-.shot-freeze-overlay.show { display: block; }
-.shot-freeze-overlay img {
- width: 100%;
- height: 100%;
+.shot-progress-strip.show { display: flex; }
+.shot-progress-thumbs {
+ display: flex;
+ gap: 8px;
+ background: rgba(0,0,0,0.35);
+ padding: 8px;
+ border-radius: 14px;
+}
+.shot-progress-slot {
+ width: 46px;
+ height: 46px;
+ border-radius: 8px;
+ overflow: hidden;
+ background: rgba(255,255,255,0.12);
+ border: 2px dashed rgba(255,255,255,0.55);
+ display: flex; align-items: center; justify-content: center;
+ color: rgba(255,255,255,0.75);
+ font-size: 0.9rem;
+ font-weight: 700;
+ flex-shrink: 0;
+}
+.shot-progress-slot.filled {
+ border: 2px solid var(--red-light);
+}
+.shot-progress-slot img {
+ width: 100%; height: 100%;
  object-fit: cover;
  display: block;
 }
-.shot-freeze-badge {
- position: absolute;
- bottom: 18px;
- left: 50%;
- transform: translateX(-50%);
- background: rgba(139,26,26,0.9);
+.shot-progress-label {
+ background: rgba(0,0,0,0.6);
  color: white;
- padding: 8px 18px;
- border-radius: 20px;
- font-size: 0.8rem;
+ font-size: 0.72rem;
  font-weight: 600;
+ padding: 4px 12px;
+ border-radius: 20px;
+ letter-spacing: 0.02em;
  white-space: nowrap;
- text-align: center;
 }
 /* Flash effect */
 .flash-overlay {
@@ -3725,9 +3774,9 @@ aenCYD0qpLks++xnoAPXh1PCbittcAaBST2HAAp1OXU2Uc8cS5tg+kc96eobIAAA"
  </div>
  <div class="flash-overlay" id="flash-overlay"></div>
  <div class="photo-shot-hint" id="photo-shot-hint"></div>
- <div class="shot-freeze-overlay" id="shot-freeze-overlay">
- <img id="shot-freeze-img" alt="">
- <div class="shot-freeze-badge" id="shot-freeze-badge"></div>
+ <div class="shot-progress-strip" id="shot-progress-strip">
+ <div class="shot-progress-thumbs" id="shot-progress-thumbs"></div>
+ <div class="shot-progress-label" id="shot-progress-label"></div>
  </div>
 <!-- Pemilihan jenis bingkai foto -->
  <div class="frame-select-bar" id="frame-select-bar">
@@ -3751,6 +3800,15 @@ x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64
 4.36A9 9 0 0 1 3.51 15"/></svg>
  </button>
+ <!-- self timer (3/5/10 detik) -->
+ <button class="btn-timer-overlay" id="btn-timer" onclick="cycleSelfTimer()" title="Timer jepret otomatis">
+ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 1h6"/></svg>
+ <span class="btn-timer-label" id="timer-btn-label">Off</span>
+ </button>
+ <!-- overlay hitung mundur self-timer -->
+ <div class="countdown-overlay" id="countdown-overlay">
+ <div class="countdown-num" id="countdown-num">3</div>
+ </div>
  </div>
  <div class="camera-controls">
  <!-- shutter -->
@@ -4050,7 +4108,8 @@ async function openCameraModal() {
  document.getElementById('camera-modal').classList.add('open');
  document.getElementById('fab').classList.add('open');
  photoShots = [];
- hidePhotoShotHint();
+ buildShotProgressStrip();
+ updateSelfTimerUI();
  const selectBar = document.getElementById('frame-select-bar');
  if (selectBar) selectBar.classList.remove('locked');
  // Start jika belum pernah atau stream sudah mati
@@ -4118,8 +4177,55 @@ async function flipCamera() {
 'scaleX(-1)' : 'scaleX(1)';
  await startCamera();
 }
+// ---- Self Timer (3 / 5 / 10 detik) ----
+let selfTimerSeconds = 0; // 0 = mati
+const SELF_TIMER_OPTIONS = [0, 3, 5, 10];
+function cycleSelfTimer() {
+ const idx = SELF_TIMER_OPTIONS.indexOf(selfTimerSeconds);
+ selfTimerSeconds = SELF_TIMER_OPTIONS[(idx + 1) % SELF_TIMER_OPTIONS.length];
+ updateSelfTimerUI();
+}
+function updateSelfTimerUI() {
+ const btn = document.getElementById('btn-timer');
+ const label = document.getElementById('timer-btn-label');
+ if (label) label.textContent = selfTimerSeconds === 0 ? 'Off' : selfTimerSeconds + 's';
+ if (btn) btn.classList.toggle('active', selfTimerSeconds !== 0);
+}
+// Hitung mundur besar di tengah layar sebelum kamera jepret otomatis
+function runSelfTimerCountdown(seconds) {
+ return new Promise(resolve => {
+ const overlay = document.getElementById('countdown-overlay');
+ const numEl = document.getElementById('countdown-num');
+ if (!overlay || !numEl) { resolve(); return; }
+ overlay.classList.add('on');
+ let n = seconds;
+ const tick = () => {
+ numEl.textContent = n;
+ numEl.style.animation = 'none';
+ void numEl.offsetWidth; // reflow supaya animasi countPop replay tiap angka
+ numEl.style.animation = '';
+ if (n <= 1) {
+ setTimeout(() => {
+ overlay.classList.remove('on');
+ resolve();
+ }, 1000);
+ return;
+ }
+ n--;
+ setTimeout(tick, 1000);
+ };
+ tick();
+ });
+}
 // ---- Shutter ----
-function handleShutter() {
+async function handleShutter() {
+ const shutterBtn = document.getElementById('btn-shutter');
+ if (shutterBtn.disabled) return;
+ if (selfTimerSeconds > 0) {
+ shutterBtn.disabled = true;
+ await runSelfTimerCountdown(selfTimerSeconds);
+ shutterBtn.disabled = false;
+ }
  takePhoto();
 }
 // ---- Photo ----
@@ -4149,16 +4255,22 @@ function takePhoto() {
  flash.classList.add('flash');
  setTimeout(() => flash.classList.remove('flash'), 150);
  canvas.toBlob(async blob => {
+ const shotIdx = photoShots.length;
  photoShots.push(blob);
+ // Kamera live TETAP tampil (tidak ada layar hitam full-screen), dan foto
+ // yang baru diambil langsung "nempel" permanen di kotak strip — persis
+ // seperti photobooth pada umumnya, bukan preview yang lalu menghilang.
+ fillShotProgressSlot(shotIdx, blob);
  if (photoShots.length < PHOTOS_PER_FRAME) {
- // Masih kurang foto -> beri jeda + preview supaya tamu benar-benar
- // ganti pose/posisi dulu sebelum jepretan berikutnya, tidak asal 2x
- // klik cepat yang hasilnya bisa mirip/sama persis.
- showShotFreeze(blob, photoShots.length);
+ // Kunci shutter sebentar supaya tamu sempat ganti pose, tanpa menutupi
+ // pandangan kamera live sama sekali.
+ const shutterBtn = document.getElementById('btn-shutter');
+ shutterBtn.disabled = true;
+ setTimeout(() => { shutterBtn.disabled = false; }, 1200);
  return;
  }
- // Semua jepretan sudah lengkap -> gabung jadi satu foto (atas-bawah)
- hidePhotoShotHint();
+ // Semua jepretan sudah lengkap -> gabung jadi satu foto
+ hideShotProgressStrip();
  let combined = blob;
  if (photoShots.length > 1) {
  try {
@@ -4172,104 +4284,50 @@ function takePhoto() {
  showPlayback(URL.createObjectURL(combined), 'photo');
  }, 'image/jpeg', 0.92);
 }
-// ---- Susun preview kotak-kotak frame sesuai jepretan yang sudah diambil ----
-// Kotak yang sudah punya foto -> tampilkan foto tsb persis di posisi jendelanya.
-// Kotak yang belum diambil -> tampilkan placeholder kosong bernomor, supaya
-// tamu tahu tinggal berapa foto lagi dan di kotak mana posisinya.
-async function buildFramePreviewImage(shotsSoFar) {
- const frameSlots = FRAME_DEFS[selectedFrameId] && FRAME_DEFS[selectedFrameId].slots;
- if (!frameSlots || shotsSoFar.length === 0) return null; // fallback ke preview biasa
- let loaded = [];
- try {
- loaded = await Promise.all(shotsSoFar.map(loadImgFromBlob));
- } catch (e) {
- return null;
+// ---- Strip preview persisten antar jepretan (mode 2+ foto dalam 1 frame) ----
+// Dipanggil saat modal kamera dibuka / ganti frame -> siapkan kotak-kotak
+// kosong bernomor sesuai jumlah foto yang dibutuhkan frame tsb.
+function buildShotProgressStrip() {
+ const wrap = document.getElementById('shot-progress-strip');
+ const thumbs = document.getElementById('shot-progress-thumbs');
+ const label = document.getElementById('shot-progress-label');
+ if (!wrap || !thumbs) return;
+ thumbs.innerHTML = '';
+ if (PHOTOS_PER_FRAME <= 1) {
+ wrap.classList.remove('show');
+ return;
  }
- const first = loaded[0].img;
- const W = first.naturalWidth || 1080;
- const H = first.naturalHeight || 1920;
- const canvas = document.createElement('canvas');
- canvas.width = W;
- canvas.height = H;
- const ctx = canvas.getContext('2d');
- ctx.fillStyle = '#FDF8F5';
- ctx.fillRect(0, 0, W, H);
- frameSlots.forEach((s, i) => {
- const sx = Math.round(s.x * W), sy = Math.round(s.y * H);
- const sw = Math.round(s.w * W), sh = Math.round(s.h * H);
- if (loaded[i]) {
- // Kotak ini sudah punya foto -> gambar persis di jendelanya
- drawImageCover(ctx, loaded[i].img, sx, sy, sw, sh);
- } else {
- // Kotak ini belum diambil -> placeholder kosong bernomor urut
- ctx.save();
- ctx.fillStyle = 'rgba(139,26,26,0.08)';
- ctx.fillRect(sx, sy, sw, sh);
- const lw = Math.max(2, Math.round(H * 0.0018));
- ctx.strokeStyle = 'rgba(139,26,26,0.35)';
- ctx.lineWidth = lw;
- ctx.setLineDash([Math.round(H * 0.012), Math.round(H * 0.009)]);
- ctx.strokeRect(sx + lw / 2, sy + lw / 2, sw - lw, sh - lw);
- ctx.setLineDash([]);
- ctx.fillStyle = 'rgba(139,26,26,0.5)';
- ctx.font = `600 ${Math.round(sh * 0.26)}px Inter, sans-serif`;
- ctx.textAlign = 'center';
- ctx.textBaseline = 'middle';
- ctx.fillText(String(i + 1), sx + sw / 2, sy + sh / 2);
- ctx.restore();
+ for (let i = 0; i < PHOTOS_PER_FRAME; i++) {
+ const slot = document.createElement('div');
+ slot.className = 'shot-progress-slot';
+ slot.id = 'shot-progress-slot-' + i;
+ slot.innerHTML = `<span>${i + 1}</span>`;
+ thumbs.appendChild(slot);
  }
- });
- // Overlay bingkai PNG di atasnya biar terlihat persis seperti hasil final
- try {
- const frameImg = await getFramePngImg(selectedFrameId);
- ctx.drawImage(frameImg, 0, 0, W, H);
- } catch (e) { /* biarkan tanpa overlay kalau gagal load */ }
- loaded.forEach(l => URL.revokeObjectURL(l.url));
- return new Promise(resolve => canvas.toBlob(b => resolve(b), 'image/jpeg', 0.92));
+ if (label) label.textContent = `Ambil foto 1 dari ${PHOTOS_PER_FRAME}`;
+ wrap.classList.add('show');
 }
-// ---- Freeze preview + countdown antara jepretan 1 & 2 ----
-async function showShotFreeze(blob, shotNum) {
- const overlay = document.getElementById('shot-freeze-overlay');
- const img = document.getElementById('shot-freeze-img');
- const badge = document.getElementById('shot-freeze-badge');
- const shutterBtn = document.getElementById('btn-shutter');
- shutterBtn.disabled = true;
- // Coba susun preview ke dalam kotak-kotak frame (kotak 1 terisi, kotak
- // sisanya masih placeholder kosong bernomor). Kalau frame ini tidak
- // punya definisi slot, fallback ke foto mentah seperti sebelumnya.
- let url;
- const previewBlob = await buildFramePreviewImage(photoShots);
- url = URL.createObjectURL(previewBlob || blob);
- img.src = url;
- overlay.classList.add('show');
- let secondsLeft = 3;
- const updateBadge = () => {
- badge.textContent = `Foto ${shotNum}/${PHOTOS_PER_FRAME} tersimpan — ganti pose, foto berikutnya dalam ${secondsLeft}...`;
- };
- updateBadge();
- const timer = setInterval(() => {
- secondsLeft--;
- if (secondsLeft <= 0) {
- clearInterval(timer);
- overlay.classList.remove('show');
- URL.revokeObjectURL(url);
- shutterBtn.disabled = false;
- updatePhotoShotHint();
- } else {
- updateBadge();
+// Isi kotak ke-`index` dengan foto yang baru diambil — foto ini TETAP
+// terlihat (tidak hilang) sampai semua kotak terisi & foto final jadi.
+function fillShotProgressSlot(index, blob) {
+ if (PHOTOS_PER_FRAME <= 1) return;
+ const slot = document.getElementById('shot-progress-slot-' + index);
+ if (slot) {
+ const url = URL.createObjectURL(blob);
+ slot.innerHTML = `<img src="${url}" alt="">`;
+ slot.classList.add('filled');
  }
- }, 1000);
+ const label = document.getElementById('shot-progress-label');
+ if (label) {
+ const doneCount = index + 1;
+ label.textContent = doneCount < PHOTOS_PER_FRAME
+ ? `Foto ${doneCount}/${PHOTOS_PER_FRAME} tersimpan — ambil foto ke-${doneCount + 1}`
+ : `Foto ${PHOTOS_PER_FRAME}/${PHOTOS_PER_FRAME} tersimpan ✓`;
+ }
 }
-// ---- Gabungkan beberapa foto jadi 1 gambar tersusun (dipakai untuk PHOTOS_PER_FRAME > 1) ----
-function updatePhotoShotHint() {
- const el = document.getElementById('photo-shot-hint');
- if (!el || PHOTOS_PER_FRAME <= 1) return;
- el.textContent = `Foto ${photoShots.length}/${PHOTOS_PER_FRAME} — ambil foto berikutnya`;
- el.classList.add('show');
-}
-function hidePhotoShotHint() {
- const el = document.getElementById('photo-shot-hint');
- if (el) el.classList.remove('show');
+function hideShotProgressStrip() {
+ const wrap = document.getElementById('shot-progress-strip');
+ if (wrap) wrap.classList.remove('show');
 }
 function loadImgFromBlob(blob) {
  return new Promise((resolve, reject) => {
@@ -4376,9 +4434,7 @@ function retake() {
  capturedBlob = null;
  capturedType = null;
  photoShots = [];
- hidePhotoShotHint();
- const freezeOverlay = document.getElementById('shot-freeze-overlay');
- if (freezeOverlay) freezeOverlay.classList.remove('show');
+ buildShotProgressStrip();
  const shutterBtn = document.getElementById('btn-shutter');
  if (shutterBtn) shutterBtn.disabled = false;
  const selectBar = document.getElementById('frame-select-bar');
@@ -7940,9 +7996,7 @@ function selectFrame(id) {
  if (activeBtn) activeBtn.classList.add('active');
  // Reset progres jepretan kalau ganti frame di tengah sesi
  photoShots = [];
- hidePhotoShotHint();
- const freezeOverlay = document.getElementById('shot-freeze-overlay');
- if (freezeOverlay) freezeOverlay.classList.remove('show');
+ buildShotProgressStrip();
  const shutterBtn = document.getElementById('btn-shutter');
  if (shutterBtn) shutterBtn.disabled = false;
 }
