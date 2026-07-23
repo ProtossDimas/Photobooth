@@ -241,6 +241,26 @@ body {
 .gallery-scroll::-webkit-scrollbar { width: 4px; }
 .gallery-scroll::-webkit-scrollbar-thumb { background: rgba(139,26,26,0.3); border-radius:
 4px; }
+/* Aksi share/download langsung di tiap kartu galeri */
+.g-actions {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ gap: 1.5rem;
+ padding: 0.5rem 0 0.7rem;
+}
+.g-action-btn {
+ background: none;
+ border: none;
+ padding: 4px;
+ color: var(--text-muted);
+ cursor: pointer;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+}
+.g-action-btn svg { width: 19px; height: 19px; }
+.g-action-btn:active { color: var(--red-primary); }
 /* Empty state */
 .gallery-empty {
  grid-column: 1 / -1;
@@ -459,11 +479,45 @@ rgba(0,0,0,0.2); }
  inset: 0;
  pointer-events: none;
  z-index: 5;
+ display: none; /* Frame TIDAK ditampilkan saat live/take foto — hanya muncul di hasil akhir */
 }
 .frame-overlay svg {
  width: 100%; height: 100%;
  position: absolute; inset: 0;
 }
+/* Preview hasil jepretan yang sudah dikomposit dengan frame (dipakai untuk
+   frame multi-foto: tampil setelah tiap jepretan, sebelum semua slot penuh) */
+.shot-result-preview {
+ position: absolute;
+ inset: 0;
+ width: 100%;
+ height: 100%;
+ object-fit: cover;
+ z-index: 6;
+ display: none;
+}
+.shot-result-preview.show { display: block; }
+.btn-next-shot {
+ position: absolute;
+ left: 50%;
+ bottom: 26px;
+ transform: translateX(-50%);
+ z-index: 7;
+ display: none;
+ align-items: center;
+ gap: 8px;
+ padding: 12px 20px;
+ border-radius: 999px;
+ border: none;
+ background: var(--red-primary);
+ color: #fff;
+ font-family: 'Inter', sans-serif;
+ font-size: 0.85rem;
+ font-weight: 600;
+ box-shadow: 0 8px 22px rgba(0,0,0,0.35);
+}
+.btn-next-shot.show { display: inline-flex; }
+.btn-next-shot svg { width: 18px; height: 18px; }
 /* Close camera button */
 .camera-close {
  position: absolute;
@@ -1360,6 +1414,13 @@ All rights reserved</p>
  <div class="camera-wrap">
  <video id="video-live" autoplay muted playsinline></video>
  <video id="video-playback" playsinline controls></video>
+ <!-- Preview hasil jepretan (sudah dikomposit dgn frame) — dipakai untuk
+      frame multi-foto: muncul di antara jepretan sebelum semua slot penuh -->
+ <img id="shot-result-preview" class="shot-result-preview" alt="Hasil jepretan">
+ <button type="button" class="btn-next-shot" id="btn-next-shot" onclick="continueToNextShot()">
+ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+ <span id="btn-next-shot-label">Ambil Foto Lagi</span>
+ </button>
  <!-- Frame Overlay (Frame_Photobooth.png, transparan, di-encode WebP, embedded base64) -->
  <div class="frame-overlay">
  <img
@@ -3982,6 +4043,7 @@ let currentMode = 'photo';
 let capturedBlob = null;
 let capturedType = null;
 let photoShots = []; // dipakai saat PHOTOS_PER_FRAME > 1 (foto sementara sebelum digabung)
+let capturedFrameApplied = false; // true kalau capturedBlob sudah dikomposit dgn frame (jadi tidak perlu diulang saat kirim)
 let gallery = [];
 let currentVNUrl = null;
 let currentEntry = null; // entry being viewed in play modal
@@ -4240,32 +4302,101 @@ function takePhoto() {
  canvas.toBlob(async blob => {
  const shotIdx = photoShots.length;
  photoShots.push(blob);
- // Kamera live TETAP tampil (tidak ada layar hitam full-screen), dan foto
- // yang baru diambil langsung "nempel" permanen di kotak strip — persis
- // seperti photobooth pada umumnya, bukan preview yang lalu menghilang.
  fillShotProgressSlot(shotIdx, blob);
- if (photoShots.length < PHOTOS_PER_FRAME) {
- // Kunci shutter sebentar supaya tamu sempat ganti pose, tanpa menutupi
- // pandangan kamera live sama sekali.
- const shutterBtn = document.getElementById('btn-shutter');
- shutterBtn.disabled = true;
- setTimeout(() => { shutterBtn.disabled = false; }, 1200);
+ const isLast = photoShots.length >= PHOTOS_PER_FRAME;
+ // Setiap jepretan langsung dikomposit dengan frame supaya tamu melihat
+ // hasil AKHIR (dengan bingkai) — bukan foto mentah tanpa bingkai.
+ let framedBlob;
+ try {
+ framedBlob = await composeShotsWithFrame(photoShots);
+ } catch (e) {
+ console.warn('Gagal komposit frame, pakai foto mentah:', e);
+ framedBlob = blob;
+ }
+ if (!isLast) {
+ // Belum semua slot foto terisi -> tampilkan hasil sementara (dengan
+ // frame) dan beri tombol untuk lanjut mengambil foto berikutnya.
+ showShotResultPreview(framedBlob);
  return;
  }
- // Semua jepretan sudah lengkap -> gabung jadi satu foto
+ // Semua jepretan sudah lengkap -> ini hasil final, siap lanjut ke form nama/pesan
  hideShotProgressStrip();
- let combined = blob;
- if (photoShots.length > 1) {
- try {
- combined = await composeSplitPhotos(photoShots);
- } catch (e) {
- console.warn('Gagal menggabungkan foto, pakai foto terakhir saja:', e);
- }
- }
- capturedBlob = combined;
+ capturedBlob = framedBlob;
  capturedType = 'photo';
- showPlayback(URL.createObjectURL(combined), 'photo');
+ capturedFrameApplied = true;
+ showPlayback(URL.createObjectURL(framedBlob), 'photo');
  }, 'image/jpeg', 0.92);
+}
+// ---- Gabungkan jepretan (sebagian atau lengkap) + overlay frame di atasnya ----
+async function composeShotsWithFrame(shotsSoFar) {
+ let combined;
+ if (PHOTOS_PER_FRAME <= 1) {
+ combined = shotsSoFar[0];
+ } else if (shotsSoFar.length >= PHOTOS_PER_FRAME) {
+ combined = await composeSplitPhotos(shotsSoFar);
+ } else {
+ combined = await composePartialSplit(shotsSoFar);
+ }
+ return composePhotoWithFrame(combined);
+}
+// Susun jepretan yang BARU SEBAGIAN terisi ke posisi slot masing-masing,
+// sisa slot yang belum terisi dibiarkan kosong (krem polos) — dipakai untuk
+// preview hasil sementara sebelum semua foto pada frame multi-foto selesai.
+async function composePartialSplit(shotsSoFar) {
+ const loaded = await Promise.all(shotsSoFar.map(loadImgFromBlob));
+ const first = loaded[0].img;
+ const W = first.naturalWidth || 1080;
+ const H = first.naturalHeight || 1920;
+ const canvas = document.createElement('canvas');
+ canvas.width = W;
+ canvas.height = H;
+ const ctx = canvas.getContext('2d');
+ ctx.fillStyle = '#FDF8F5';
+ ctx.fillRect(0, 0, W, H);
+ const frameSlots = FRAME_DEFS[selectedFrameId] && FRAME_DEFS[selectedFrameId].slots;
+ if (frameSlots) {
+ loaded.forEach(({ img }, i) => {
+ const s = frameSlots[i];
+ if (!s) return;
+ drawImageCover(ctx, img, Math.round(s.x * W), Math.round(s.y * H), Math.round(s.w * W), Math.round(s.h * H));
+ });
+ } else {
+ drawImageCover(ctx, first, 0, 0, W, H);
+ }
+ loaded.forEach(({ url }) => URL.revokeObjectURL(url));
+ return new Promise((resolve, reject) => {
+ canvas.toBlob(b => b ? resolve(b) : reject(new Error('Canvas toBlob gagal')), 'image/jpeg', 0.93);
+ });
+}
+// ---- Tampilkan hasil jepretan sementara (sudah ada framenya) + tombol lanjut ----
+function showShotResultPreview(blob) {
+ const live = document.getElementById('video-live');
+ const img = document.getElementById('shot-result-preview');
+ const nextBtn = document.getElementById('btn-next-shot');
+ const label = document.getElementById('btn-next-shot-label');
+ const shutterBtn = document.getElementById('btn-shutter');
+ if (live) live.style.display = 'none';
+ if (img) {
+ img.src = URL.createObjectURL(blob);
+ img.classList.add('show');
+ }
+ if (label) {
+ const doneCount = photoShots.length;
+ label.textContent = `Ambil Foto ${doneCount + 1}/${PHOTOS_PER_FRAME}`;
+ }
+ if (nextBtn) nextBtn.classList.add('show');
+ if (shutterBtn) shutterBtn.style.display = 'none';
+}
+// ---- Lanjut ke jepretan berikutnya (kembali ke live camera, frame tetap tersembunyi) ----
+function continueToNextShot() {
+ const live = document.getElementById('video-live');
+ const img = document.getElementById('shot-result-preview');
+ const nextBtn = document.getElementById('btn-next-shot');
+ const shutterBtn = document.getElementById('btn-shutter');
+ if (img) { img.classList.remove('show'); img.src = ''; }
+ if (nextBtn) nextBtn.classList.remove('show');
+ if (live) live.style.display = 'block';
+ if (shutterBtn) { shutterBtn.style.display = ''; shutterBtn.disabled = false; }
 }
 // ---- Strip preview persisten antar jepretan (mode 2+ foto dalam 1 frame) ----
 // Dipanggil saat modal kamera dibuka / ganti frame -> siapkan kotak-kotak
@@ -4426,6 +4557,11 @@ function retake() {
  playback.pause(); playback.src = ''; playback.style.display = 'none';
  const img = document.getElementById('photo-preview');
  if (img) img.style.display = 'none';
+ const shotPreview = document.getElementById('shot-result-preview');
+ if (shotPreview) { shotPreview.classList.remove('show'); shotPreview.src = ''; }
+ const nextBtn = document.getElementById('btn-next-shot');
+ if (nextBtn) nextBtn.classList.remove('show');
+ capturedFrameApplied = false;
  document.getElementById('video-live').style.display = 'block';
  document.getElementById('btn-retake').classList.add('hidden');
  document.getElementById('btn-shutter').style.display = '';
@@ -4450,8 +4586,9 @@ async function confirmSend() {
  if (vnIsRec) await stopVNRecording();
  let blobToSend = capturedBlob;
  const typeToSend = capturedType;
- // For photos: composite frame overlay onto the image before uploading
- if (typeToSend === 'photo') {
+ // For photos: composite frame overlay onto the image before uploading —
+ // dilewati kalau frame sudah dikomposit langsung setelah jepretan (lihat takePhoto/composeShotsWithFrame)
+ if (typeToSend === 'photo' && !capturedFrameApplied) {
  try {
  blobToSend = await composePhotoWithFrame(blobToSend);
  } catch (e) {
@@ -4612,6 +4749,14 @@ stroke="currentColor" stroke-width="2.5"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 
  </div>
  </div>
  </div>
+ <div class="g-actions">
+ <button type="button" class="g-action-btn" title="Bagikan" onclick="event.stopPropagation(); shareMediaAt(${i})">
+ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+ </button>
+ <button type="button" class="g-action-btn" title="Unduh" onclick="event.stopPropagation(); downloadMediaAt(${i})">
+ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+ </button>
+ </div>
  <div class="g-caption">
  <div class="g-caption-date">${fmtDate(e.ts)}</div>
  </div>`;
@@ -4757,6 +4902,19 @@ height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Jeda VN`;
  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokewidth="2"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19
 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg> Putar VN`;
  };
+}
+// ---- Download & Share (langsung dari kartu galeri, tanpa buka modal) ----
+async function downloadMediaAt(i) {
+ const e = gallery[i];
+ if (!e || e.uploading) return;
+ currentEntry = e;
+ await downloadMedia();
+}
+async function shareMediaAt(i) {
+ const e = gallery[i];
+ if (!e || e.uploading) return;
+ currentEntry = e;
+ await shareMedia();
 }
 // ---- Download & Share ----
 async function downloadMedia() {
