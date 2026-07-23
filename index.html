@@ -430,9 +430,13 @@ rgba(0,0,0,0.2); }
 }
 .camera-modal.open { opacity: 1; pointer-events: all; }
 .camera-box {
- /* Portrait 9:16, with max height = viewport */
- width: min(440px, 100vw);
- height: min(calc(440px * 16/9), 100dvh);
+ /* Portrait 9:16 SELALU dijaga — baik di potret maupun lanskap — supaya
+   video, guide, dan semua kontrol overlay tidak pernah gepeng/tumpang
+   tindih ketika HP diputar ke lanskap. */
+ aspect-ratio: 9 / 16;
+ width: min(440px, 100vw, calc(100dvh * 9 / 16), calc(100dvw * 9 / 16));
+ height: auto;
+ max-height: 100dvh;
  background: #000;
  border-radius: 20px;
  overflow: hidden;
@@ -444,11 +448,10 @@ rgba(0,0,0,0.2); }
  box-shadow: 0 20px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(139,26,26,0.2);
 }
 .camera-modal.open .camera-box { transform: scale(1) translateY(0); }
-/* On very small screens, go full-screen */
+/* On very small screens, go full-bleed but KEEP the 9:16 ratio (letterbox
+   left/right in landscape instead of stretching the box short & wide) */
 @media (max-height: 700px) {
  .camera-box {
- width: 100vw;
- height: 100dvh;
  border-radius: 0;
  }
 }
@@ -501,7 +504,6 @@ rgba(0,0,0,0.2); }
    masuk ke jendela foto pada frame terpilih */
 .frame-guide-overlay {
  position: absolute;
- inset: 0;
  pointer-events: none;
  z-index: 4;
 }
@@ -3899,7 +3901,7 @@ class="vn-bar"></div><div class="vn-bar"></div><div class="vn-bar"></div><div cl
 x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
  Kirim ke Galeri
  </button>
- <button class="btn-retake-modal" onclick="closeNameModal()">Rekam Ulang</button>
+ <button class="btn-retake-modal" onclick="retake()">Rekam Ulang</button>
  </div>
 </div>
 <!-- PLAYBACK MODAL -->
@@ -4210,7 +4212,29 @@ true });
  }
  }
  }
+ // Setelah dimensi video sebenarnya diketahui (bisa beda dari constraints,
+ // terutama saat landscape) -> hitung ulang persegi guide supaya presisi.
+ const videoEl = document.getElementById('video-live');
+ if (videoEl) {
+ videoEl.addEventListener('loadedmetadata', () => {
+ updateFrameGuideRect();
+ renderFrameGuide();
+ }, { once: true });
+ }
 }
+// Sinkronkan ulang guide saat orientasi berubah / layar di-resize (mis. rotate ke landscape)
+window.addEventListener('resize', () => {
+ if (document.getElementById('camera-modal').classList.contains('open')) {
+ updateFrameGuideRect();
+ }
+});
+window.addEventListener('orientationchange', () => {
+ setTimeout(() => {
+ if (document.getElementById('camera-modal').classList.contains('open')) {
+ updateFrameGuideRect();
+ }
+ }, 250);
+});
 async function flipCamera() {
  facingMode = facingMode === 'user' ? 'environment' : 'user';
  // Mirror only front cam
@@ -8163,24 +8187,65 @@ function selectFrame(id) {
  renderFrameGuide();
 }
 // ---- Garis panduan titik-titik putih di layar live (menandai jendela foto) ----
+// Hitung persegi tampilan video sebenarnya di dalam wadahnya (object-fit:contain
+// bisa menyisakan letterbox di kiri/kanan ATAU atas/bawah tergantung rasio —
+// terutama saat landscape). Guide harus mengikuti persegi ini, bukan wadah penuh.
+function computeContainRect(containerW, containerH, contentW, contentH) {
+ if (!contentW || !contentH || !containerW || !containerH) {
+ return { x: 0, y: 0, w: containerW, h: containerH };
+ }
+ const containerRatio = containerW / containerH;
+ const contentRatio = contentW / contentH;
+ let w, h, x, y;
+ if (contentRatio > containerRatio) {
+ w = containerW;
+ h = containerW / contentRatio;
+ x = 0;
+ y = (containerH - h) / 2;
+ } else {
+ h = containerH;
+ w = containerH * contentRatio;
+ y = 0;
+ x = (containerW - w) / 2;
+ }
+ return { x, y, w, h };
+}
+function updateFrameGuideRect() {
+ const wrap = document.getElementById('frame-guide-overlay');
+ const video = document.getElementById('video-live');
+ const container = document.querySelector('.camera-wrap');
+ if (!wrap || !video || !container) return;
+ const cw = container.clientWidth, ch = container.clientHeight;
+ const vw = video.videoWidth || 1080, vh = video.videoHeight || 1920;
+ const rect = computeContainRect(cw, ch, vw, vh);
+ wrap.style.left = Math.round(rect.x) + 'px';
+ wrap.style.top = Math.round(rect.y) + 'px';
+ wrap.style.width = Math.round(rect.w) + 'px';
+ wrap.style.height = Math.round(rect.h) + 'px';
+}
 function renderFrameGuide() {
  const wrap = document.getElementById('frame-guide-overlay');
  if (!wrap) return;
  wrap.style.display = '';
  wrap.innerHTML = '';
+ updateFrameGuideRect();
  const def = FRAME_DEFS[selectedFrameId];
  // Frame tanpa slot spesifik (mis. Frame Klasik, 1 foto) -> satu kotak
- // panduan generik hampir penuh layar.
- const slots = (def && def.slots) || [{ x: 0.045, y: 0.035, w: 0.91, h: 0.85 }];
- slots.forEach((s, i) => {
+ // panduan generik hampir penuh area foto.
+ const slots = (def && def.slots) || [{ x: 0.045, y: 0.035, w: 0.91, h: 0.93 }];
+ // Hanya tampilkan SATU kotak panduan: untuk foto berikutnya yang masih
+ // perlu diambil — bukan semua slot sekaligus — supaya persis sinkron
+ // dengan foto yang akan jatuh di slot tsb pada frame final.
+ const nextIdx = Math.min(photoShots.length, slots.length - 1);
+ const s = slots[nextIdx];
+ if (!s) return;
  const box = document.createElement('div');
- box.className = 'frame-guide-box' + (i < photoShots.length ? ' done' : '');
+ box.className = 'frame-guide-box';
  box.style.left = (s.x * 100) + '%';
  box.style.top = (s.y * 100) + '%';
  box.style.width = (s.w * 100) + '%';
  box.style.height = (s.h * 100) + '%';
  wrap.appendChild(box);
- });
 }
 
 // Preload frame image sekali saja per jenis frame untuk performa
