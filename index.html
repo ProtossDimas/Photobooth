@@ -464,6 +464,28 @@ rgba(0,0,0,0.2); }
  background: #000;
  overflow: hidden;
 }
+.rotate-lock-overlay {
+ display: none;
+ position: absolute;
+ inset: 0;
+ z-index: 500;
+ background: rgba(0,0,0,0.97);
+ color: #fff;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ text-align: center;
+ gap: 1rem;
+ padding: 2rem;
+}
+.rotate-lock-overlay svg { animation: rotateHint 1.8s ease-in-out infinite; }
+.rotate-lock-overlay p { font-size: 0.95rem; line-height: 1.5; max-width: 260px; color: rgba(255,255,255,0.9); }
+@keyframes rotateHint { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-90deg); } }
+/* Kamera hanya didukung mode potret — di lanskap, tampilkan overlay ini
+   dan blok interaksi ke elemen kamera lain di baliknya. */
+@media (orientation: landscape) {
+ .camera-modal.open .rotate-lock-overlay { display: flex; }
+}
 #video-live {
  width: 100%;
  height: 100%;
@@ -3863,6 +3885,16 @@ d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10
 d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
  </button>
  </div>
+ <!-- Overlay ini muncul & memblok kamera kalau HP dalam posisi lanskap —
+      kamera hanya didukung dalam mode potret supaya tidak error/aneh. -->
+ <div class="rotate-lock-overlay" id="rotate-lock-overlay">
+ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="52" height="52">
+ <rect x="7" y="2" width="10" height="20" rx="2"/>
+ <path d="M3 8 L3 4 L7 4" />
+ <path d="M3 4 L9 10" />
+ </svg>
+ <p>Putar HP kembali ke mode potret (vertikal) untuk memakai kamera</p>
+ </div>
  </div>
 </div>
 <!-- NAME PROMPT MODAL -->
@@ -4168,17 +4200,44 @@ function sizeCameraBox() {
  box.style.width = Math.round(w) + 'px';
  box.style.height = Math.round(h) + 'px';
 }
+// Reset TOTAL tampilan sesi kamera (video live, preview jepretan sementara,
+// hint teks, progress strip) — dipanggil setiap kali modal kamera dibuka
+// supaya kalau tamu batal di tengah jalan (tap X saat baru ambil 1 dari 2
+// foto) lalu buka kamera lagi, tidak ada sisa foto/teks dari sesi
+// sebelumnya yang nyangkut di layar.
+function resetCameraSessionUI() {
+ photoShots = [];
+ awaitingNextShot = false;
+ capturedBlob = null;
+ capturedType = null;
+ capturedFrameApplied = false;
+ const live = document.getElementById('video-live');
+ const shotPreview = document.getElementById('shot-result-preview');
+ const hint = document.getElementById('photo-shot-hint');
+ const guide = document.getElementById('frame-guide-overlay');
+ const playback = document.getElementById('video-playback');
+ const photoPreview = document.getElementById('photo-preview');
+ const shutterBtn = document.getElementById('btn-shutter');
+ const retakeBtn = document.getElementById('btn-retake');
+ const selectBar = document.getElementById('frame-select-bar');
+ if (live) live.style.display = 'block';
+ if (guide) guide.style.display = '';
+ if (shotPreview) { shotPreview.classList.remove('show'); shotPreview.src = ''; }
+ if (hint) hint.classList.remove('show');
+ if (playback) { playback.pause(); playback.src = ''; playback.style.display = 'none'; }
+ if (photoPreview) photoPreview.style.display = 'none';
+ if (shutterBtn) { shutterBtn.style.display = ''; shutterBtn.disabled = false; }
+ if (retakeBtn) retakeBtn.classList.add('hidden');
+ if (selectBar) selectBar.classList.remove('locked');
+}
 async function openCameraModal() {
  document.getElementById('camera-modal').classList.add('open');
  document.getElementById('fab').classList.add('open');
  sizeCameraBox();
- photoShots = [];
- awaitingNextShot = false;
+ resetCameraSessionUI();
  buildShotProgressStrip();
  renderFrameGuide();
  updateSelfTimerUI();
- const selectBar = document.getElementById('frame-select-bar');
- if (selectBar) selectBar.classList.remove('locked');
  // Start jika belum pernah atau stream sudah mati
  if (!cameraStarted || !stream || stream.getTracks().every(t => t.readyState === 'ended'))
 {
@@ -4411,13 +4470,11 @@ async function composePartialSplit(shotsSoFar) {
  loaded.forEach(({ img }, i) => {
  const s = frameSlots[i];
  if (!s) return;
- // Sama seperti composeSplitPhotos: crop persis fraksi guide box, bukan
- // cover-crop dari tengah, supaya preview sementara juga konsisten
- // dengan area yang ditunjukkan garis panduan saat live camera.
- const sx = Math.round(s.x * img.naturalWidth);
- const sy = Math.round(s.y * img.naturalHeight);
- const sw = Math.round(s.w * img.naturalWidth);
- const sh = Math.round(s.h * img.naturalHeight);
+ const g = s.src || s;
+ const sx = Math.round(g.x * img.naturalWidth);
+ const sy = Math.round(g.y * img.naturalHeight);
+ const sw = Math.round(g.w * img.naturalWidth);
+ const sh = Math.round(g.h * img.naturalHeight);
  ctx.drawImage(img, sx, sy, sw, sh, Math.round(s.x * W), Math.round(s.y * H), Math.round(s.w * W), Math.round(s.h * H));
  });
  } else {
@@ -4561,10 +4618,11 @@ async function composeSplitPhotos(blobs) {
  // tengah kamera).
  loaded.forEach(({ img }, i) => {
  const s = frameSlots[i];
- const sx = Math.round(s.x * img.naturalWidth);
- const sy = Math.round(s.y * img.naturalHeight);
- const sw = Math.round(s.w * img.naturalWidth);
- const sh = Math.round(s.h * img.naturalHeight);
+ const g = s.src || s;
+ const sx = Math.round(g.x * img.naturalWidth);
+ const sy = Math.round(g.y * img.naturalHeight);
+ const sw = Math.round(g.w * img.naturalWidth);
+ const sh = Math.round(g.h * img.naturalHeight);
  const dx = Math.round(s.x * W);
  const dy = Math.round(s.y * H);
  const dw = Math.round(s.w * W);
@@ -8187,8 +8245,15 @@ EjjumdRnk10g6qrYjRsH8Ym0C/IPwB9xDWcny2yBm2iI5sDvuiIbBVUxgyhKhke14SJzfm7Mw5/g7DoM
 XSf8q6f9uYWK35ziea7J0U/Btfy/PULJNOQqcg1wl28dhQVhOPfbIEq2H1Np9AF952lCPu+aS4ZY5Zmo61B4z3JNkhUZk/8d6iNQqr2m3+9Cdy
 qI1aeyQt1Kx9yFSpGsVjWVyWcX9e2YbLHl45iYmnogj32gVzkfUO/gwyRvpP6H4EfBXyTl8W6tRGatAAAAAA`;
 // Definisi jendela foto pada FRAME2 (fraksi 0..1 dari lebar/tinggi kanvas foto)
+// x/y/w/h = posisi jendela pada FRAME (harus sama persis dengan cutout di
+// gambar bingkai, JANGAN diubah tanpa mengubah asetnya juga).
+// src (opsional) = area yang di-crop dari hasil jepretan mentah untuk
+// dimasukkan ke jendela tsb, juga dipakai sebagai posisi kotak panduan
+// titik-titik putih di layar live. Kalau tidak diisi, sama dengan x/y/w/h.
+// Untuk foto ke-1 (slot atas) di-set lebih ke tengah supaya wajah tamu
+// yang tertangkap, bukan cuma latar belakang di atas kepala.
 const FRAME2_SLOTS = [
- { x: 0.04, y: 0.0742, w: 0.9156, h: 0.3142 },
+ { x: 0.04, y: 0.0742, w: 0.9156, h: 0.3142, src: { x: 0.04, y: 0.343, w: 0.9156, h: 0.3142 } },
  { x: 0.04, y: 0.4433, w: 0.9156, h: 0.3142 },
 ];
 // ════════════════════════════════════════════════════════════
@@ -8287,12 +8352,13 @@ function renderFrameGuide() {
  const nextIdx = Math.min(photoShots.length, slots.length - 1);
  const s = slots[nextIdx];
  if (!s) return;
+ const g = s.src || s;
  const box = document.createElement('div');
  box.className = 'frame-guide-box';
- box.style.left = (s.x * 100) + '%';
- box.style.top = (s.y * 100) + '%';
- box.style.width = (s.w * 100) + '%';
- box.style.height = (s.h * 100) + '%';
+ box.style.left = (g.x * 100) + '%';
+ box.style.top = (g.y * 100) + '%';
+ box.style.width = (g.w * 100) + '%';
+ box.style.height = (g.h * 100) + '%';
  wrap.appendChild(box);
 }
 
