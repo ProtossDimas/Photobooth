@@ -432,7 +432,10 @@ rgba(0,0,0,0.2); }
 .camera-box {
  /* Portrait 9:16 SELALU dijaga — baik di potret maupun lanskap — supaya
    video, guide, dan semua kontrol overlay tidak pernah gepeng/tumpang
-   tindih ketika HP diputar ke lanskap. */
+   tindih ketika HP diputar ke lanskap.
+   Ukuran aktual (px) di-set lewat JS (lihat sizeCameraBox()) berdasarkan
+   window.innerWidth/innerHeight sebenarnya, bukan hanya dvh/vh CSS, supaya
+   tidak kekecilan di lanskap akibat address bar browser mobile. */
  aspect-ratio: 9 / 16;
  width: min(440px, 100vw, calc(100dvh * 9 / 16));
  height: auto;
@@ -4145,9 +4148,30 @@ function initSiteBackground() {
  }
 }
 // ---- Camera Modal ----
+// Hitung ulang ukuran camera-box pakai window.innerWidth/innerHeight ASLI
+// (bukan cuma andalkan unit CSS vw/dvh yang di banyak browser mobile suka
+// meleset terutama saat lanskap dengan address bar yang collapse/expand),
+// supaya box kamera tidak kelihatan kekecilan saat HP diputar ke lanskap.
+function sizeCameraBox() {
+ const box = document.querySelector('.camera-box');
+ if (!box) return;
+ const vw = window.innerWidth;
+ const vh = window.innerHeight;
+ // Portrait 9:16 tetap dijaga, tapi dipaskan semaksimal mungkin ke ruang
+ // yang benar-benar tersedia (baik dibatasi lebar maupun tinggi layar).
+ let w = Math.min(440, vw, vh * 9 / 16);
+ let h = w * 16 / 9;
+ if (h > vh) {
+ h = vh;
+ w = h * 9 / 16;
+ }
+ box.style.width = Math.round(w) + 'px';
+ box.style.height = Math.round(h) + 'px';
+}
 async function openCameraModal() {
  document.getElementById('camera-modal').classList.add('open');
  document.getElementById('fab').classList.add('open');
+ sizeCameraBox();
  photoShots = [];
  awaitingNextShot = false;
  buildShotProgressStrip();
@@ -4225,12 +4249,14 @@ true });
 // Sinkronkan ulang guide saat orientasi berubah / layar di-resize (mis. rotate ke landscape)
 window.addEventListener('resize', () => {
  if (document.getElementById('camera-modal').classList.contains('open')) {
+ sizeCameraBox();
  updateFrameGuideRect();
  }
 });
 window.addEventListener('orientationchange', () => {
  setTimeout(() => {
  if (document.getElementById('camera-modal').classList.contains('open')) {
+ sizeCameraBox();
  updateFrameGuideRect();
  }
  }, 250);
@@ -4385,7 +4411,14 @@ async function composePartialSplit(shotsSoFar) {
  loaded.forEach(({ img }, i) => {
  const s = frameSlots[i];
  if (!s) return;
- drawImageCover(ctx, img, Math.round(s.x * W), Math.round(s.y * H), Math.round(s.w * W), Math.round(s.h * H));
+ // Sama seperti composeSplitPhotos: crop persis fraksi guide box, bukan
+ // cover-crop dari tengah, supaya preview sementara juga konsisten
+ // dengan area yang ditunjukkan garis panduan saat live camera.
+ const sx = Math.round(s.x * img.naturalWidth);
+ const sy = Math.round(s.y * img.naturalHeight);
+ const sw = Math.round(s.w * img.naturalWidth);
+ const sh = Math.round(s.h * img.naturalHeight);
+ ctx.drawImage(img, sx, sy, sw, sh, Math.round(s.x * W), Math.round(s.y * H), Math.round(s.w * W), Math.round(s.h * H));
  });
  } else {
  drawImageCover(ctx, first, 0, 0, W, H);
@@ -4519,9 +4552,24 @@ async function composeSplitPhotos(blobs) {
  if (frameSlots && frameSlots.length >= n) {
  // Frame terpilih punya jendela foto spesifik (mis. Frame Strip) -> taruh
  // tiap foto persis di posisi jendelanya supaya pas dengan bingkai final.
+ // PENTING: ambil crop dari fraksi (x,y,w,h) YANG SAMA PERSIS dengan kotak
+ // panduan titik-titik putih yang ditampilkan ke tamu saat live camera
+ // (lihat renderFrameGuide/updateFrameGuideRect) — BUKAN cover-crop dari
+ // tengah foto seperti sebelumnya. Kalau pakai cover-crop dari tengah,
+ // hasil jepretan jadi tidak sesuai dengan area yang ditunjukkan garis
+ // panduan (mis. panduan ada di atas, tapi hasil foto malah ambil bagian
+ // tengah kamera).
  loaded.forEach(({ img }, i) => {
  const s = frameSlots[i];
- drawImageCover(ctx, img, Math.round(s.x * W), Math.round(s.y * H), Math.round(s.w * W), Math.round(s.h * H));
+ const sx = Math.round(s.x * img.naturalWidth);
+ const sy = Math.round(s.y * img.naturalHeight);
+ const sw = Math.round(s.w * img.naturalWidth);
+ const sh = Math.round(s.h * img.naturalHeight);
+ const dx = Math.round(s.x * W);
+ const dy = Math.round(s.y * H);
+ const dw = Math.round(s.w * W);
+ const dh = Math.round(s.h * H);
+ ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
  });
  } else {
  // Fallback lama: susun rata atas-bawah dengan celah + garis pemisah
